@@ -12,7 +12,7 @@ section .text
   global _start
 
 section .data
-msg db 'Hello, world!',0xa
+msg db 'Hello, world!',0xa,0x0
 msg_len equ $ - msg
 dot db '.',0x0
 dot_len equ $ - dot
@@ -22,33 +22,49 @@ section .text
 strlen: ; rax *str
   push rbx ; rbx will be used to store initial rax value
 
-  mov rbx, rax
+  mov rbx, rax ; store rax in rbx
   .while:
-    cmp [rax], byte 0
+    cmp [rax], byte 0 ; compare with \0
     je .end
-    inc rax
-    jmp .while
+
+    inc rax ; increment rax
+    jmp .while ; loop
 
   .end:
-    sub rax, rbx
-    pop rbx
+    sub rax, rbx ; compute difference between rax and rbx
+    pop rbx ; don't forget to set back rbx that we previously pushed
     ret
+
+ft_write: ; rax *str
+  push rbx
+  push rcx
+  push rdx
+
+  mov rcx, rax ; store str in rcx
+  call strlen ; compute its length
+
+  mov edx, eax ; length
+  ; str is already in ecx
+  mov ebx, 1 ; STDOUT
+  mov eax, 4; write syscall
+
+  int 0x80
+  pop rdx
+  pop rcx
+  pop rbx
+  ret
 
 
 hello:
-  mov edx, msg_len ; move length of msg
-  mov ecx, msg ; move pointer to msg
-  mov ebx, 1 ; STDOUT
-  mov eax, 4 ; write syscall
-  int 0x80 ; execute syscall
+  push rax
+  mov eax, msg
+  call ft_write
+  pop rax
   ret
 
 _start:
   push rbp
   mov rbp, rsp
-
-  mov rax, msg
-  call strlen
 
   sub rsp, 0x430 ; char buf[1024]
   mov rcx, 0 ; O_RDONLY
