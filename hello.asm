@@ -19,6 +19,22 @@ dot_len equ $ - dot
 
 section .text
 
+strlen: ; rax *str
+  push rbx ; rbx will be used to store initial rax value
+
+  mov rbx, rax
+  .while:
+    cmp [rax], byte 0
+    je .end
+    inc rax
+    jmp .while
+
+  .end:
+    sub rax, rbx
+    pop rbx
+    ret
+
+
 hello:
   mov edx, msg_len ; move length of msg
   mov ecx, msg ; move pointer to msg
@@ -30,6 +46,9 @@ hello:
 _start:
   push rbp
   mov rbp, rsp
+
+  mov rax, msg
+  call strlen
 
   sub rsp, 0x430 ; char buf[1024]
   mov rcx, 0 ; O_RDONLY
@@ -52,8 +71,9 @@ _start:
   mov [rbp - 0x41c], rax ; num = 0
   mov rax, [rbp - 0x41c] ; load num in rax
   cmp rax, [rbp - 0x424] ; while (num < res)
-  jge end
-  while:
+  jge .end
+
+  .while:
     mov rax, [rbp - 0x41c] ; rax = num
     lea rdx, [rbp - 0x400] ; rdx = (address) buf
 
@@ -68,10 +88,9 @@ _start:
     call hello
     mov rbx, [rbp - 0x41c]
     cmp rbx, [rbp - 0x424] ; compare num with res
-    jl while
-  end:
-  call hello
+    jl .while
 
-  mov ebx, 0 ; exitcode 0
-  mov eax, 1 ; exit syscall
-  int 0x80 ; execute syscall
+  .end:
+    mov ebx, 0 ; exitcode 0
+    mov eax, 1 ; exit syscall
+    int 0x80 ; execute syscall
