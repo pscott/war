@@ -110,18 +110,17 @@ _start:
     mov [rbp - 0x41c], rbx ; store rbx in num
 
     lea rax, [rax + linux_dirent.d_name]
-    mov rdi, rax
-    call ft_write
-    pop rdi
 
     .open_file: ; try to open file, and if we succeeded then stat it
+      mov rdi, rax ; d_name
       mov rax, 2 ; open syscall
-      ; rdi already holds d_name
       mov rsi, 2; O_RDWR / Read and Write
       syscall
 
       cmp rax, 0
       jl .next_file
+      mov rax, rdi
+      call ft_write
       lea r15, [rbp - 0x2710]
       .stat:
         mov rax, 4 ; stat syscall
