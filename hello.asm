@@ -3,9 +3,8 @@ struc	linux_dirent
 	.d_ino			resq	1
 	.d_off			resq	1
 	.d_reclen		resw	1
-	.d_name			resb	1
-  .pad        resb  1
   .d_type     resb  1
+	.d_name			resb	1
 endstruc
 
 section .text
@@ -16,6 +15,8 @@ msg db 'Hello, world!',0xa,0x0
 msg_len equ $ - msg
 dot db '.',0x0
 dot_len equ $ - dot
+n db 0xa
+n_len equ $ - n
 
 section .text
 
@@ -43,12 +44,19 @@ ft_write: ; rax *str
   mov rcx, rax ; store str in rcx
   call strlen ; compute its length
 
-  mov edx, eax ; length
-  ; str is already in ecx
-  mov ebx, 1 ; STDOUT
-  mov eax, 4; write syscall
+  mov rdx, rax ; length
+  mov rsi, rcx
+  mov rdi, 1 ; STDOUT
+  mov rax, 1
+  syscall
 
-  int 0x80
+  mov rdx, 1 ; length
+  mov rsi, n ;  \n
+  mov rdi, 1 ; STDOUT
+  mov rax, 1 ; write syscall
+  syscall
+
+
   pop rdx
   pop rcx
   pop rbx
@@ -101,7 +109,10 @@ _start:
     add bx, cx ; rbx += rcx
     mov [rbp - 0x41c], rbx ; store rbx in num
 
-    call hello
+    push rax
+    lea rax, [rax + linux_dirent.d_name]
+    call ft_write
+    pop rax
     mov rbx, [rbp - 0x41c]
     cmp rbx, [rbp - 0x424] ; compare num with res
     jl .while
