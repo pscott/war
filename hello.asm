@@ -40,6 +40,8 @@ ft_write: ; rax *str
   push rbx
   push rcx
   push rdx
+  push rsi
+  push rdi
 
   mov rcx, rax ; store str in rcx
   call strlen ; compute its length
@@ -57,6 +59,8 @@ ft_write: ; rax *str
   syscall
 
 
+  pop rdi
+  pop rsi
   pop rdx
   pop rcx
   pop rbx
