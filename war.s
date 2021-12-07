@@ -4,6 +4,7 @@
 %define VADDR		0xc000000
 %define ALIGN		0x200000
 %define STACK_SIZE	4096
+%define DIRENT_SIZE	1024
 %define EHDR_SIZE	64
 %define JMP_REL_SIZE	5
 %define STDOUT		1
