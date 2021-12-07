@@ -1,0 +1,6 @@
+{
+	"files.associations": {
+		"dirent.h": "c",
+		"syscall.h": "c"
+	}
+}
