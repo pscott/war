@@ -1,37 +1,34 @@
 ; Utils
-%define ELF64_MAGIC 0x464c457f
-%define PT_NOTE 0x4
-%define SCOTT_SIGNATURE 0x41424344
-%define JMP_REL_SIZE 5
-%define VADDR 0xc000000
-%define ALIGN 0x200000
-%define STACK_SIZE 4096
+%define ELF64_MAGIC	0x464c457f
+%define SCOTT_SIGNATURE	0x41424344
+%define VADDR		0xc000000
+%define ALIGN		0x200000
+%define STACK_SIZE	4096
+%define EHDR_SIZE	64
+%define JMP_REL_SIZE	5
+%define STDOUT		1
+%define ELFCLASS64	2
+%define O_RDONLY	0
+%define O_RDWR		2
+%define SEEK_END	2
+%define DT_REG		8
+%define PT_LOAD		1
+%define PT_NOTE		4
+%define PF_X		1
+%define PF_R		4
 
 ; Syscalls
-%define SYS_EXIT         60
-%define SYS_OPEN         2
-%define SYS_CLOSE        3
-%define SYS_WRITE        1
-%define SYS_READ         0
-%define SYS_GETDENTS64   217
-%define SYS_FSTAT       5
-%define SYS_LSEEK        8
-%define SYS_PREAD64      17
-%define SYS_PWRITE64     18
-%define SYS_SYNC        162
-
-%define STDOUT           1
-%define EHDR_SIZE        64
-%define ELFCLASS64       2
-%define O_RDONLY         0
-%define O_RDWR           2
-%define SEEK_END         2
-%define DT_REG           8
-%define PT_LOAD          1
-%define PT_NOTE          4
-%define PF_X             1
-%define PF_R             4
-%define FIRST_RUN        1
+%define SYS_READ	0
+%define SYS_WRITE	1
+%define SYS_OPEN	2
+%define SYS_CLOSE	3
+%define SYS_FSTAT	5 
+%define SYS_LSEEK	8
+%define SYS_PREAD64	17
+%define SYS_PWRITE64	18
+%define SYS_EXIT	60
+%define SYS_SYNC	162
+%define SYS_GETDENTS64	217
 
 ; Stack buffer offsets
 %define STAT 0
