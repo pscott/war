@@ -260,7 +260,7 @@ _start:
       inc eax
       mov [r15 + FINGERPRINT_ADD], eax ; store it back
       mov rax, [rsi] ; load fingerprint
-      .add: ; 
+      .byte_from_str: ; load
         xor dl, dl
         sub al, 0x30
         add dl, al
@@ -300,11 +300,13 @@ _start:
         shl al, 7
         add dl, al
 
+      .add: ; add the fingerprint offset to rdx
         xor rax, rax
         mov eax, [r15 + FINGERPRINT_ADD]
         add rdx, rax
-        xor rax, rax ; number is in rdx
 
+      .byte_to_str: ; number is in rdx
+        xor rax, rax
         xor r8, r8
         mov r8, rdx ; 1
         shr r8, 7 ; 1 0 0 0 0 0 0
