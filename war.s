@@ -54,6 +54,8 @@
 %define DOT_FD 312
 %define FINGERPRINT 320
 %define FINGERPRINT_ADD 328
+%define KEY	336
+%define OFFSET	344
 %define DIR_SIZE 350
 %define DIRENT 400
 %define DIRENT_D_RECLEN 416

