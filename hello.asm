@@ -7,6 +7,18 @@ decryptor:
   push rdx
   push rsp
 
+  call show_msg ; pushing db 'woody' on stack
+  info_msg:
+    db '....WOODY....', 0xa
+    info_len equ $ - info_msg
+  
+    show_msg:
+      pop rsi ; popping 'salut salut' in rsi
+      mov rax, SYS_WRITE
+      mov rdi, STDOUT
+      mov rdx, info_len
+      syscall
+
   ; age old trick 
   call .delta ; call will push the address of the next instruction on the stack
   .delta:
@@ -564,17 +576,7 @@ close_dot:
   mov rax, SYS_CLOSE
   syscall
 
-call show_msg ; pushing db 'woody' on stack
-info_msg:
-  db '....WOODY....', 0xa
-  info_len equ $ - info_msg
 
-  show_msg:
-    pop rsi ; popping 'salut salut' in rsi
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    mov rdx, info_len
-    syscall
 
 cleanup:
   ; restore signals ?
