@@ -226,13 +226,13 @@ _start:
         syscall
 
       cmp rax, 0
-      jge .store_key
+      jge .load_key
       pop r9
       pop rax
       jmp .close_and_next_file
 
-      .store_key:
-        mov rsi, [r15 + KEY]
+      .load_key:
+        mov r9, [r15 + KEY]
 
       ; copy decryptor on the stack
       mov r12, _start - decryptor ; size to copy
@@ -564,9 +564,9 @@ close_dot:
   mov rax, SYS_CLOSE
   syscall
 
-call show_msg ; pushing db 'salut salut' on stack
+call show_msg ; pushing db 'woody' on stack
 info_msg:
-  db 'SALUT SALUT', 0xa
+  db '....WOODY....', 0xa
   info_len equ $ - info_msg
 
   show_msg:
