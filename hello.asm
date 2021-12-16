@@ -11,9 +11,9 @@ decryptor:
   info_msg:
     db '....WOODY....', 0xa
     info_len equ $ - info_msg
-  
+
     show_msg:
-      pop rsi ; popping 'salut salut' in rsi
+      pop rsi ; popping 'woody' in rsi
       mov rax, SYS_WRITE
       mov rdi, STDOUT
       mov rdx, info_len
