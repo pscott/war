@@ -11,6 +11,8 @@
 %define ELFCLASS64	2
 %define O_RDONLY	0
 %define O_RDWR		2
+%define O_CREAT		4
+%define O_TRUNC		8
 %define SEEK_END	2
 %define DT_REG		8
 %define PT_LOAD		1
