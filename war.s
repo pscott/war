@@ -1,4 +1,5 @@
 ; Utils
+%define CHUNK_SIZE 1024
 %define ELF64_MAGIC	0x464c457f
 %define SCOTT_SIGNATURE	0x41424344
 %define VADDR		0xc000000
@@ -13,6 +14,8 @@
 %define O_RDWR		2
 %define O_CREAT		4
 %define O_TRUNC		8
+%define SEEK_SET	0
+%define SEEK_CUR	1
 %define SEEK_END	2
 %define DT_REG		8
 %define PT_LOAD		1
@@ -20,6 +23,8 @@
 %define PF_X		1
 %define PF_W		2
 %define PF_R		4
+%define SHT_PROGBITS	1
+%define SHF_EXECINSTR   (1 << 2)
 
 ; Syscalls
 %define SYS_READ	0
@@ -42,8 +47,12 @@
 %define EHDR_PAD 153
 %define EHDR_ENTRY 168
 %define EHDR_PHOFF 176
+%define EHDR_SHOFF 184
 %define EHDR_PHENTSIZE 198
 %define EHDR_PHNUM 200
+%define EHDR_SHENTSIZE 202
+%define EHDR_SHNUM 204
+%define EHDR_SHSTRNDX 206
 %define PHDR_TYPE 208
 %define PHDR_FLAGS 212
 %define PHDR_OFFSET 216
@@ -54,12 +63,21 @@
 %define PHDR_ALIGN 256
 %define JMP_REL 300
 %define DOT_FD 312
-%define FINGERPRINT 320
-%define FINGERPRINT_ADD 328
+%define SH_ADDRESS 320
+%define SH_SIZE 328
 %define KEY	336
 %define OFFSET	344
-%define DIR_SIZE 350
-%define DIRENT 400
-%define DIRENT_D_RECLEN 416
-%define DIRENT_D_TYPE 418
-%define DIRENT_D_NAME 419
+%define SHDR_BASE 400
+
+struc shdr
+	.sh_name		resd	1
+	.sh_type		resd	1
+	.sh_flags		resq	1
+	.sh_addr		resq	1
+	.sh_offset		resq	1
+	.sh_size		resq	1
+	.sh_link		resd	1
+	.sh_info		resd	1
+	.sh_addralign		resq	1
+	.sh_entsize		resq	1
+endstruc
