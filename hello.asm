@@ -431,8 +431,6 @@ _start:
 
     mov r12, [r15 + SH_SIZE]
     push r14
-    mov rax, SYS_SYNC
-    syscall
 
     mov r14, [rsi + shdr.sh_offset] ; store sh_offset in r14
     .cpy_and_encrypt:
@@ -487,9 +485,6 @@ _start:
         mov r10, r14
         add r14, rdx
         mov rax, SYS_PWRITE64
-        syscall
-
-        mov rax, SYS_SYNC
         syscall
 
       cmp r12, CHUNK_SIZE
