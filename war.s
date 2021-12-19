@@ -1,5 +1,5 @@
 ; Utils
-%define CHUNK_SIZE 1024
+%define CHUNK_SIZE 1024 
 %define ELF64_MAGIC	0x464c457f
 %define SCOTT_SIGNATURE	0x41424344
 %define VADDR		0xc000000
@@ -24,6 +24,7 @@
 %define PF_W		2
 %define PF_R		4
 %define SHT_PROGBITS	1
+%define SHF_WRITE	1
 %define SHF_EXECINSTR   (1 << 2)
 
 ; Syscalls
@@ -62,7 +63,7 @@
 %define PHDR_MEMSZ 248
 %define PHDR_ALIGN 256
 %define JMP_REL 300
-%define DOT_FD 312
+%define FD 312
 %define SH_ADDRESS 320
 %define SH_SIZE 328
 %define KEY	336

