@@ -10,6 +10,7 @@
 %define JMP_REL_SIZE	5
 %define STDOUT		1
 %define ELFCLASS64	2
+%define EI_DATA		5
 %define O_RDONLY	0
 %define O_RDWR		2
 %define O_CREAT		4

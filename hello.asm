@@ -71,7 +71,7 @@ _start:
         mov rdx, .show_help - .help_msg
         syscall
 
-      jmp exit
+      jmp exit_error
 
   .two_args:
 
@@ -82,7 +82,7 @@ _start:
   syscall
 
   cmp rax, 0
-  jl exit
+  jl exit_error
 
   mov r8, rax ; store fd in r8
 
@@ -100,7 +100,7 @@ _start:
     pop rdi ; pop woody
 
     cmp rax, 0
-    jl exit
+    jl exit_error
 
     mov r9, rax ; store fd in r9
 
@@ -172,19 +172,19 @@ _start:
 
   ; -- Check header
   cmp dword [r15 + EHDR], ELF64_MAGIC ; Compare with ELF magic
-  jnz exit
+  jnz exit_error
 
   ; Check if it's 64 architecture
   cmp byte [r15 + EHDR_CLASS], ELFCLASS64
-  jne exit
+  jne exit_error
 
   ; Check if it has already been infected
   cmp dword [r15 + EHDR_PAD], SCOTT_SIGNATURE
-  jz exit
+  jz exit_error
 
   ; Check for endianness scott
-  ; cmp byte [r15 + ehdr.ei_data], 1 ; little endian
-  ; jne .close_and_next_file
+  cmp byte [r15 + EHDR + EI_DATA], 1 ; little endian
+  jne exit_error
 
   ; prepare for loop
   mov r8, [r15 + EHDR_PHOFF] ; load phoffset
@@ -222,7 +222,7 @@ _start:
     inc rbx ; add one to phdr loop counter
 
     cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
-    jge exit
+    jge exit_error
 
     add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
     jmp .loop_phdr ; loop back
@@ -242,7 +242,7 @@ _start:
     syscall
 
     cmp rax, 0
-    jnz exit
+    jnz exit_error
 
     ; -- Append Virus
     mov rdi, r9 ; load fd
@@ -252,7 +252,7 @@ _start:
     syscall
 
     cmp rax, 0
-    jl exit
+    jl exit_error
 
     call .delta ; call will push the address of the next instruction on the stack
     .delta:
@@ -276,7 +276,7 @@ _start:
 
     cmp rax, 0
     jge .generate_key
-    jmp exit
+    jmp exit_error
 
     .generate_key:
       mov rdi, rax ; load fd
@@ -287,7 +287,7 @@ _start:
       syscall
 
     cmp rax, 0
-    jle exit
+    jle exit_error
 
     pop rdi ; load fd
     mov rax, SYS_CLOSE
@@ -331,7 +331,7 @@ _start:
         syscall
 
         cmp rax, 0
-        jle exit
+        jle exit_error
 
         mov r14, [rsi + shdr.sh_offset] ; store in r14 strtab
 
@@ -406,7 +406,7 @@ _start:
         inc cx
         cmp cx, [r15 + EHDR_SHNUM]
         jle .loop_shdr
-        jmp exit ; not found
+        jmp exit_error ; not found
 
     .section_found:
     pop r14 ; restore
@@ -495,7 +495,7 @@ _start:
     mov rax, SYS_PWRITE64
     syscall
     cmp rax, 0
-    jle exit
+    jle exit_error
 
     .patch_phdr:
     ; -- Patch program header
@@ -522,7 +522,7 @@ _start:
     syscall
     
     cmp rax, 0
-    jle exit
+    jle exit_error
 
     ; -- Patch ehdr
     mov r14, [r15 + EHDR_ENTRY] ; store original ehdr entry in r14
@@ -540,7 +540,7 @@ _start:
     syscall
 
     cmp rax, 0
-    jl exit
+    jl exit_error
 
     ; -- Get to the end of the file
     mov rdi, r9 ; load fd
@@ -550,7 +550,7 @@ _start:
     syscall
 
     cmp rax, 0
-    jl exit
+    jl exit_error
 
     ; Create patched jmp
     mov rdx, [r15 + PHDR_VADDR] ; load the virtual address
@@ -574,7 +574,7 @@ _start:
     syscall
 
     cmp rax, 0
-    jl exit;
+    jl exit_error;
 
     ; -- Get to the end of the file
     mov rdi, r9 ; load fd
@@ -628,6 +628,10 @@ code_offset:
 section_size:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
+exit_error:
+  mov rdi, 1 ; exit code 1
+  mov rax, SYS_EXIT
+  syscall
 
 exit:
   xor rdi, rdi ; exit code 0
