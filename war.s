@@ -1,5 +1,5 @@
 ; Utils
-%define CHUNK_SIZE 1024 
+%define CHUNK_SIZE 64 
 %define ELF64_MAGIC	0x464c457f
 %define SCOTT_SIGNATURE	0x41424344
 %define VADDR		0xc000000
@@ -63,12 +63,11 @@
 %define PHDR_MEMSZ 248
 %define PHDR_ALIGN 256
 %define JMP_REL 300
-%define FD 312
+%define FD 310
 %define SH_ADDRESS 320
-%define SH_SIZE 328
-%define KEY	336
-%define OFFSET	344
-%define SHDR_BASE 400
+%define SH_SIZE 330
+%define KEY	340
+%define SHDR_BASE 500
 
 struc shdr
 	.sh_name		resd	1

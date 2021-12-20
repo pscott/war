@@ -143,8 +143,6 @@ _start:
 
   mov r15, rsp ; r15 will be the base of our stack
 
-  mov dword [r15 + OFFSET], 0 ; store the offset
-
   ; --- Re-open woody
   call .open_target2
   .woody2:
@@ -221,8 +219,6 @@ _start:
     syscall
 
     .not_executable:
-
-
     inc rbx ; add one to phdr loop counter
 
     cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
@@ -274,8 +270,6 @@ _start:
     .after_urandom:
       pop rdi
 
-    xor r9, r9
-    mov r9d, [r15 + OFFSET] ; load the offset we need to add
     mov rsi, O_RDONLY
     mov rax, SYS_OPEN
     syscall
@@ -305,9 +299,7 @@ _start:
 
     ; copy decryptor on the stack
     mov r12, _start - decryptor ; size to copy
-    xor rax, rax
-    mov eax, [r15 + OFFSET] ; load the offset we need to add
-    lea rsi, [rbp + decryptor + rax] 
+    lea rsi, [rbp + decryptor] 
     lea rax, [r15 + STACK_SIZE]
     xor rdi, rdi ; init rdi
     .memcpy_decryptor:
@@ -319,7 +311,6 @@ _start:
       cmp r12, 0
       jg .memcpy_decryptor
 
-    ; should be section here
     .find_text_section:
       mov r8, [r15 + EHDR_SHOFF] ; shdr shoff
       push rbx ; store rbx
@@ -449,11 +440,9 @@ _start:
         mov rax, SYS_PREAD64
         syscall
 
-      mov rax, r12
-      cmp rax, CHUNK_SIZE
-      jl .encrypt_bytes
-      mov rax, CHUNK_SIZE
       .encrypt_chunks: ; encrypt 8 by 8
+        cmp rax, 8 ; 8 bytes or less left to copy?
+        jl .encrypt_bytes ; write bytes one by one
         xor [rsi], r9
         add rsi, 8
         sub rax, 8
@@ -608,9 +597,17 @@ _start:
     mov rax, SYS_LSEEK
     syscall
 
-    lea rsi, [r15 + SH_ADDRESS]
+    lea rsi, [r15 + SH_ADDRESS] ; write section address (patched)
     mov r10, rax
-    mov rdx, 16 ; want to write 16 bytes
+    push rax
+    mov rdx, 8
+    mov rax, SYS_PWRITE64
+    syscall
+
+    lea rsi, [r15 + SH_SIZE] ; write section size
+    pop r10
+    add r10, 8
+    mov rdx, 8
     mov rax, SYS_PWRITE64
     syscall
 
