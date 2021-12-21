@@ -1,6 +1,6 @@
 BIN_NAME=woody_woodpacker
 
-all: $(BIN_NAME)
+all:
 	nasm -f elf64 woody_woodpacker.asm && ld -s -o ${BIN_NAME} woody_woodpacker.o
 
 clean:
