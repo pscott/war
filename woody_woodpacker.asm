@@ -97,8 +97,6 @@ _start:
     mov rax, SYS_OPEN ;
     syscall ; open
 
-    pop rdi ; pop woody
-
     cmp rax, 0
     jl exit_error
 
@@ -323,7 +321,7 @@ _start:
         xor rax, rax
         mov ax, [r15 + EHDR_SHSTRNDX] ; shdr[header->e_shstrndx]
         mov r10w, WORD [r15 + EHDR_SHENTSIZE]
-        mul r10 ; multply by sizeof section header
+        mul r10w ; multply by sizeof section header
         mov r10, rax ; store back into r10
         add r10, r8 ; add shdr
         mov dx, [r15 + EHDR_SHENTSIZE] ; 64
@@ -615,9 +613,9 @@ _start:
     syscall
 
 cleanup:
-  ; restore signals ?
-  add rsp, STACK_SIZE ; restore rsp
-  add rsp, v_stop - decryptor;
+  mov rdi, [r15 + FD]
+  mov rax, SYS_CLOSE
+  syscall
 
 v_stop:
   jmp exit
@@ -629,6 +627,22 @@ section_size:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 
 exit_error:
+  ; close woody's fd
+  mov rdi, [r15 + FD]
+  mov rax, SYS_CLOSE
+  syscall
+
+  call .truncate_woody
+  .woody:
+    db "woody", 0x0
+
+  .truncate_woody:
+    pop rdi; "woody"
+    mov rsi, 578 ; O_RDWR | O_CREAT | O_TRUNC
+    mov rdx, 511 ; rwxrwx--x
+    mov rax, SYS_OPEN ;
+    syscall ; open
+
   mov rdi, 1 ; exit code 1
   mov rax, SYS_EXIT
   syscall
