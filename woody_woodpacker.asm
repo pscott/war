@@ -71,7 +71,7 @@ _start:
         mov rdx, .show_help - .help_msg
         syscall
 
-      jmp exit_error
+      jmp exit_one
 
   .two_args:
 
@@ -656,6 +656,7 @@ exit_error:
     mov rax, SYS_OPEN ;
     syscall ; open
 
+exit_one:
   mov rdi, 1 ; exit code 1
   mov rax, SYS_EXIT
   syscall
