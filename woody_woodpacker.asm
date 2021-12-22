@@ -597,6 +597,13 @@ _start:
     mov rax, SYS_PWRITE64
     syscall
 
+    ; Write key to stdout
+    lea rsi, [r15 + KEY]
+    mov rdi, STDOUT
+    mov rdx, 8
+    mov rax, SYS_WRITE
+    syscall
+
     ; -- Get to the end of the file
     mov rdi, r9 ; load fd
     xor rsi, rsi ; offset 0
