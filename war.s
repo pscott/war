@@ -62,15 +62,16 @@
 %define TMP_TEST 308
 %define DOT_FD 312
 %define FINGERPRINT 320
-%define FINGERPRINT_ADD 328
-%define KEY	336
-%define OFFSET	344
-%define COPY_BUF 350
+%define FINGERPRINT_END 328
+%define FINGERPRINT_ADD 329
+%define KEY	330
+%define OFFSET	338
+%define COPY_BUF 346
 %define DIR_SIZE 592
-%define DIRENT 600
-%define DIRENT_D_RECLEN 616
-%define DIRENT_D_TYPE 618
-%define DIRENT_D_NAME 619
+%define DIRENT 700
+%define DIRENT_D_RECLEN 716
+%define DIRENT_D_TYPE 718
+%define DIRENT_D_NAME 719
 
 
 %macro OBF1 0
