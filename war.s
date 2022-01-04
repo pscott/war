@@ -71,3 +71,19 @@
 %define DIRENT_D_RECLEN 616
 %define DIRENT_D_TYPE 618
 %define DIRENT_D_NAME 619
+
+
+%macro OBF1 0
+	jmp short 0x2
+	db 0x0f
+%endmacro
+
+%macro OBF2 0
+	jmp short 0x3
+	db 0x48, 0x31
+%endmacro
+
+%macro OBF3 0
+	jmp short 0x3
+	db 0xb8, 0xd9
+%endmacro
