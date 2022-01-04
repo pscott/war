@@ -846,20 +846,6 @@ close_dot:
   mov rax, SYS_CLOSE
   syscall
 
-; SCOTT
-call show_msg ; pushing db 'woody' on stack
-info_msg:
-  db '....WOODY....', 0xa
-  info_len equ $ - info_msg
-
-  show_msg:
-    OBF3
-    pop rsi ; popping 'woody' in rsi
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    mov rdx, info_len
-    syscall
-
 cleanup:
   add rsp, STACK_SIZE ; restore rsp
   add rsp, v_stop - decryptor;
