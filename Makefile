@@ -1,10 +1,10 @@
-BIN_NAME=war
+BIN_NAME=pestillence
 
 all:
-	nasm -f elf64 war.asm && ld -s -o ${BIN_NAME} war.o
+	nasm -f elf64 pestillence.asm && ld -s -o ${BIN_NAME} pestillence.o
 
 clean:
-	rm -rf war.o
+	rm -rf pestillence.o
 
 fclean: clean
 	rm -rf ${BIN_NAME}
