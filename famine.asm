@@ -857,7 +857,7 @@ v_stop:
 dev_urandom:
   db "/dev/urandom", 0
 signature:
-  db 0, 'War version 1.0 (c)oded by pscott - '
+  db 0, 'Famine version 1.0 (c)oded by pscott - '
   signature_len equ $ - signature
 fingerprint:
 	db 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x00
