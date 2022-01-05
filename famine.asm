@@ -1,4 +1,4 @@
-%include "war.s"
+%include "famine.s"
 
 section .text
   global _start

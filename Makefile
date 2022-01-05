@@ -1,10 +1,10 @@
-BIN_NAME=war
+BIN_NAME=famine
 
 all:
-	nasm -f elf64 war.asm && ld -s -o ${BIN_NAME} war.o
+	nasm -f elf64 famine.asm && ld -s -o ${BIN_NAME} famine.o
 
 clean:
-	rm -rf war.o
+	rm -rf famine.o
 
 fclean: clean
 	rm -rf ${BIN_NAME}
