@@ -51,8 +51,6 @@ _start:
 
   mov DWORD [r15 + FINGERPRINT_ADD], 0 ; initialize to 0
 
-  jmp start_open
-
   .is_traced: ; read /proc/self/status and check if TracerPid is not 0
     call .open_self_status
       .self_status:
